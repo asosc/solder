@@ -64,7 +64,7 @@ public class SolderTRefHashTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SVault svault = new SVault(id, "river", idTenant, random.nextInt());
+			SVault svault = new SVault(id, "river_trefhash", idTenant, random.nextInt());
 
 			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
 
@@ -86,6 +86,7 @@ public class SolderTRefHashTest {
 	
 	@Test
 	public void test_001_StandAlone() throws Exception {
+		init();
 		trefhasTest.test_001_StandAlone();
 	}
 

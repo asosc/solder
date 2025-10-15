@@ -19,7 +19,6 @@ import org.solder.vsync.SolderVaultFactory.SVault;
 import com.aura.crypto.CryptoScheme;
 import com.beech.store.TVault;
 import com.beech.testing.TSMapTest;
-import com.beech.testing.TableTest;
 import com.ee.session.db.Tenant;
 import com.lnk.jdbc.MSSQLUtil;
 import com.lnk.jdbc.SQLQuery;
@@ -67,7 +66,7 @@ public class SolderTSMapTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SVault svault = new SVault(id, "river", idTenant, random.nextInt());
+			SVault svault = new SVault(id, "river_tsmap", idTenant, random.nextInt());
 
 			TSMapTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
 
