@@ -90,7 +90,7 @@ public class SolderRepoTest {
 		SolderMain.setSolderContainerGroup(cg);
 		
 		for (String stSchema : aStSchema) {
-			List<SRepo> list = SolderVaultFactory.selectBySchema(stSchema);
+			List<SRepo> list = SolderVaultFactory.selectRepoBySchema(stSchema);
 			LOG.info(String.format("Found %d vaults for schema",list.size(),stSchema));
 			
 			for (SRepo svault : list) {

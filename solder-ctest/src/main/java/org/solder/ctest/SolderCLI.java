@@ -15,6 +15,7 @@ import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
 import org.solder.vsync.SolderRepoOps;
 import org.solder.vsync.SolderVaultFactory;
+import org.solder.vsync.SolderRepoOps.SLocalRepo;
 import org.solder.vsync.SolderVaultFactory.SRepo;
 
 import com.aura.crypto.CryptoScheme;
@@ -91,13 +92,15 @@ public class SolderCLI  extends AbstractCLI {
 
 	// ALL Handlers are here..
 
-	static final String[] git_Ops = { "create","setCg"};
+	static final String[] git_Ops = { "create","checkout","push"};
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create",
-				"Git create. Params:EEDBCfgFile fileDir stIdRep schemaName [tenant_id aoId]");
-		mapGitOpsHelp.put("setCg",
-				"Set Container Group. Params:EEDBCfgFile cgName");
+				"Git create. Params:EEDBCfgFile fileLocalRepo repoId schemaName [tenant_id aoId]");
+		mapGitOpsHelp.put("checkout",
+				"Git Checkout(same as clone,rebase). Params:EEDBCfgFile fileLocalRepo repoId");
+		mapGitOpsHelp.put("push",
+				"Git Push(sam as commit and push). Params:EEDBCfgFile fileLocalRepo repoId");
 	}
 	
 	
@@ -160,11 +163,27 @@ public class SolderCLI  extends AbstractCLI {
 			}
 			break;
 			
-			case "setcg": {
+			case "checkout": {
 				File fileCfg = makeFile(args[nParam++]);
 				initSolder(fileCfg,"SolderCLIGitCreate");
-				String stCg = args[nParam++];
-				setContainerGroup(stCg);
+				File fileCache = makeFile(args[nParam++]);
+				logConsole("File Cache: "+fileCache.getAbsolutePath());
+				Validator.checkDir(fileCache, false,"Git Cache");
+				String stId = args[nParam++];
+				logConsole("id: "+stId);
+				gitCheckout(fileCache,stId);
+				break;
+			}
+			
+			case "push": {
+				File fileCfg = makeFile(args[nParam++]);
+				initSolder(fileCfg,"SolderCLIGitCreate");
+				File fileCache = makeFile(args[nParam++]);
+				logConsole("File Cache: "+fileCache.getAbsolutePath());
+				Validator.checkDir(fileCache, false,"Git Cache");
+				String stId = args[nParam++];
+				logConsole("id: "+stId);
+				gitPush(fileCache,stId);
 				break;
 			}
 			
@@ -199,7 +218,7 @@ public class SolderCLI  extends AbstractCLI {
 			String[] aExt = new String[] {"bee"};
 			
 			//Ensure the record is there..
-			SRepo repo = SolderVaultFactory.getById(stId);
+			SRepo repo = SolderVaultFactory.getRepoById(stId);
 			if (repo==null) {
 				logConsole(String.format("No previous repo found. creating.."));
 				repo = new SRepo(stId,schemaName,tenantId,aoId,stCommitDir,aExt);
@@ -208,21 +227,64 @@ public class SolderCLI  extends AbstractCLI {
 			}
 			
 			SolderRepoOps.repInit(repo, fileCache);
-			SolderRepoOps.repCommit(repo, fileCache);
+			SolderRepoOps.repCommit(repo, fileCache,(mapCommit)->{
+				mapCommit.put("cmsg", "SolderCLI gitCreate");
+			});
 			
 		}
 		
 		
-		void setContainerGroup(String cgNameToSet) throws IOException {
-			String cgName = SolderMain.getSolderContainerGroupName();
-			if (cgName==null || !CompareUtils.stringEquals(cgName, cgNameToSet)) {
-				ContainerGroup cg = ContainerGroup.get(cgNameToSet);
-				Objects.requireNonNull(cg,"container group "+cgNameToSet);
-				SolderMain.setSolderContainerGroup(cg);
+		void gitCheckout(File fileCache,String stId)  throws IOException {
+			
+			String cgNameToSet = "drink";
+			ContainerGroup cg = ContainerGroup.get(cgNameToSet);
+			Objects.requireNonNull(cg,"container group "+cgNameToSet);
+			SolderMain.setSolderContainerGroup(cg);
+			
+			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			
+			
+			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
+			
+			//Ensure the record is there..
+			SRepo repo = SolderVaultFactory.getRepoById(stId);
+			if (repo==null) {
+				logConsole(String.format("Unknown repoId "+stId));
+			} else {
+				logConsole(String.format("Found repo. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
 			}
 			
+			SLocalRepo lrepo = new SLocalRepo(repo, fileCache);
+			SolderRepoOps.repoCheckout(lrepo, false);
+			logConsole(String.format("Done checkout"));
 		}
-	
+		
+		void gitPush(File fileCache,String stId)  throws IOException {
+			
+			String cgNameToSet = "drink";
+			ContainerGroup cg = ContainerGroup.get(cgNameToSet);
+			Objects.requireNonNull(cg,"container group "+cgNameToSet);
+			SolderMain.setSolderContainerGroup(cg);
+			
+			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			
+			
+			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
+			
+			//Ensure the record is there..
+			SRepo repo = SolderVaultFactory.getRepoById(stId);
+			if (repo==null) {
+				logConsole(String.format("Unknown repoId "+stId));
+			} else {
+				logConsole(String.format("Found repo. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
+			}
+			
+			
+			SolderRepoOps.repCommit(repo,fileCache,(mapCommit)->{
+				mapCommit.put("cmsg", "SolderCLI gitpush");
+			});
+			logConsole(String.format("Done push"));
+		}
 
 	}
 }

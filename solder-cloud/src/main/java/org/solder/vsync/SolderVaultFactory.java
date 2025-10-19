@@ -3,6 +3,7 @@ package org.solder.vsync;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,10 +11,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.nimbo.blobs.BlobFS;
 import org.solder.core.SAudit;
 import org.solder.core.SEvent;
 import org.solder.core.SolderException;
@@ -49,7 +50,6 @@ public class SolderVaultFactory implements IVaultFactory {
 	private static Log LOG = LogFactory.getLog(SolderVaultFactory.class.getName());
 
 	public static final String TYPE = "solder_repo";
-	
 
 	public SolderVaultFactory() {
 		TVault.registerFactory(this);
@@ -61,7 +61,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 	public IVaultProvider getProvider(String stFactoryParams, boolean fReadOnly) throws IOException {
 		String id = stFactoryParams;
-		SRepo srepo = getById(id);
+		SRepo srepo = getRepoById(id);
 		Objects.requireNonNull(srepo, "srepo " + id);
 		return srepo.getProvider(fReadOnly);
 	}
@@ -87,7 +87,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		SQLQuery qRepoIns, qRepoSelId, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne;
 
-		SQLQuery qCommitIns,  qCommitSelRepo, qCommitDelOne,qCommitSeq;
+		SQLQuery qCommitIns, qCommitSelId, qCommitSelRepo, qCommitDelOne, qCommitSeq;
 
 		RepQueries(String dbName, DBType dbType) throws IOException {
 
@@ -95,8 +95,8 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			tsRepo = new SQLTableSchema(SREPO_TABLE);
 			tsRepo.parseAndAdd(new String[] { "id,string(48),1", "tschema,string(16),1", "tenant_id,int,1",
-					"ao_id,int,1","commit_dir,string,0","ext_keep,string,1","commit_id,int,1", "commit_date,date,1", "change_date,date,1", "create_date,date,1",
-					"last_update,date,1" });
+					"ao_id,int,1", "commit_dir,string,0", "ext_keep,string,1", "commit_id,int,1", "commit_date,date,1",
+					"change_date,date,1", "create_date,date,1", "last_update,date,1" });
 
 			String stPrimaryKey = "id";
 			String[] aUnique = new String[] { "tschema,tenant_id,ao_id" };
@@ -124,12 +124,12 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			tsCommit = new SQLTableSchema(SCOMMIT_TABLE);
 			tsCommit.parseAndAdd(new String[] { "id,int,1", "repo_id,string(48),1", "chash,string(128),1",
-					"tenant_id,int,1", "create_date,date,1", "info,string,0,3" });
+					"tenant_id,int,1", "blob_fsid,long,1", "create_date,date,1", "info,string,0,3" });
 
 			stPrimaryKey = "id";
 			aUnique = new String[] { "repo_id,chash" };
 			aIndex = null;
-			
+
 			tsCommit.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SCOMMIT_SEQ);
 			tsCommit.setReadOnly();
 			SQLTableSchema.register(tsCommit);
@@ -139,42 +139,41 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			qCommitSeq = DriverUtil.createSequenceQuery(dbName, dbType, tsCommit, SCOMMIT_SEQ);
 			qCommitIns = DriverUtil.createInsertQuery(dbName, dbType, tsCommit);
-			
+			qCommitSelId = DriverUtil.createSelectQuery(dbName, dbType, tsCommit, "id", "ById");
 			qCommitSelRepo = DriverUtil.createSelectQuery(dbName, dbType, tsCommit, "repo_id", "ByRepo");
 			qCommitDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsCommit, "id", "One");
-			SQLQuery.addToMap(qCommitIns, qCommitSelRepo, qCommitDelOne,qCommitSeq);
+			SQLQuery.addToMap(qCommitIns, qCommitSelRepo, qCommitDelOne, qCommitSeq);
 		}
 	}
-	
 
-	
 	static int generateCommitId() throws IOException {
 		return (int) SQLTm.get().nextSequenceId(reqQ.qCommitSeq);
 	}
-	
-	public static class SCommit {
+
+	public static class SCommit implements Comparable<SCommit> {
 		int id;
-	
-		String chash,repoId;
+
+		String chash, repoId;
+		long blobFsId;
 		int tenantId;
 		Date dateCreate;
-		Map<String,String> mapInfo;
+		Map<String, String> mapInfo;
 
 		public SCommit() {
 		}
 
-		public SCommit(SRepo repo, String chash,Map<String, String> mapInfo,int commitId) throws IOException {
-			//Generated from sequence.
-			if (commitId <=0 || commitId <= repo.getCommitId()) {
-				throw new SolderException("Invalid commitId "+commitId);
+		public SCommit(SRepo repo, String chash, Map<String, String> mapInfo, int commitId) throws IOException {
+			// Generated from sequence.
+			if (commitId <= 0 || commitId <= repo.getCommitId()) {
+				throw new SolderException("Invalid commitId " + commitId);
 			}
 			this.id = commitId;
-			Objects.requireNonNull(repo,"repo");
+			Objects.requireNonNull(repo, "repo");
 			this.repoId = repo.getId();
-			
+
 			this.chash = Validator.require(chash, "chash", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 			this.tenantId = repo.getTenantId();
-		
+
 			dateCreate = new Date();
 			if (mapInfo == null) {
 				mapInfo = new LinkedHashMap<>();
@@ -182,26 +181,39 @@ public class SolderVaultFactory implements IVaultFactory {
 			this.mapInfo = mapInfo;
 		}
 
+		public int compareTo(SCommit sc) {
+			// Natural order is based on id.
+			return id = sc.id;
+		}
+
+		public boolean equals(Object o) {
+			if (o instanceof SCommit sc) {
+				return id == sc.id;
+			} else {
+				return false;
+			}
+		}
+
 		public void serialize(Encoder encoder) throws IOException {
 			encoder.writeInt("id", id);
 			encoder.writeString("repo_id", repoId);
 			encoder.writeString("chash", chash);
 			encoder.writeInt("tenant_id", tenantId);
+			encoder.writeLong("blob_fsid", blobFsId);
 			encoder.writeDate("create_date", dateCreate);
 			encoder.writeProperties("info", mapInfo);
 		}
 
 		public void deserialize(Decoder decoder) throws IOException {
-			
+
 			id = decoder.readInt("id");
 			repoId = decoder.readString("repo_id");
 			chash = decoder.readString("chash");
 			tenantId = decoder.readInt("tenant_id");
+			blobFsId=decoder.readLong("blob_fsid");
 			dateCreate = decoder.readDate("create_date");
 			mapInfo = decoder.readProperties("info");
 		}
-
-		
 
 		public int getId() {
 			return id;
@@ -218,8 +230,25 @@ public class SolderVaultFactory implements IVaultFactory {
 		public int getTenantId() {
 			return tenantId;
 		}
-
 		
+		public long getBlobFsId() {
+			return blobFsId;
+		}
+		
+		void setBlobFsId(long blobFsId) {
+			this.blobFsId=blobFsId;
+		}
+		
+		public BlobFS getBlobFs() throws IOException{
+			if (blobFsId<=0) {
+				//Auto look up by owner??? May be...
+				return null;
+			}
+			BlobFS blobFs = BlobFS.getById(blobFsId);
+			Objects.requireNonNull(blobFs,"blob fs "+blobFsId);
+			return blobFs;
+		}
+
 		public Date getCreateDate() {
 			return dateCreate;
 		}
@@ -228,20 +257,18 @@ public class SolderVaultFactory implements IVaultFactory {
 			return mapInfo;
 		}
 
-		
-
 		void insert() throws IOException {
 			// We get the transactions sqlTm.
 			if (id < 0) {
 				throw new SolderException("Commit Id not set");
 			}
 			SQLTm.get().executeOne(reqQ.qCommitIns, this::serialize, null);
-			Event.log(SEvent.SCommitCreate,id , tenantId, (mb) -> {
+			Event.log(SEvent.SCommitCreate, id, tenantId, (mb) -> {
 				mb.put("repo_id", repoId);
 				mb.put("chash", chash);
 			});
 		}
-		
+
 		public void delete() throws IOException {
 			int i = SQLTm.get().executeOne(reqQ.qCommitDelOne, (encoder) -> {
 				encoder.writeInt("id", id);
@@ -253,19 +280,31 @@ public class SolderVaultFactory implements IVaultFactory {
 					mb.put("id", id);
 				});
 			} else {
-				Event.log(SEvent.SCommitDelete,id , tenantId, (mb) -> {
+				Event.log(SEvent.SCommitDelete, id, tenantId, (mb) -> {
 					mb.put("repo_id", repoId);
 					mb.put("chash", chash);
 				});
 			}
 
 		}
-		
-		
 	}
 
-	static List<SCommit> selectByRepo(String repoId) throws IOException {
-		String repoIdFinal = Validator.require(repoId, "repo_id", Rules.NO_NULL_EMPTY,Rules.TRIM);
+	static SCommit selectCommitById(int id) throws IOException {
+		TReference<SCommit> tref = new TReference<>();
+		SQLTm.get().select(reqQ.qCommitSelId, (encoder) -> {
+			encoder.writeInt("id", id);
+		}, (decoder) -> {
+			if (decoder.next()) {
+				SCommit scommit = new SCommit();
+				scommit.deserialize(decoder);
+				tref.set(scommit);
+			}
+		}, null);
+		return tref.get();
+	}
+
+	static List<SCommit> selectCommitByRepo(String repoId) throws IOException {
+		String repoIdFinal = Validator.require(repoId, "repo_id", Rules.NO_NULL_EMPTY, Rules.TRIM);
 		List<SCommit> list = new ArrayList<>();
 		SQLTm.get().select(reqQ.qCommitSelRepo, (encoder) -> {
 			encoder.writeString("repo_id", repoIdFinal);
@@ -280,7 +319,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	}
 
 	public static class SRepo {
-		String id, schemaName,commitDir;
+		String id, schemaName, commitDir;
 		String[] aExtension;
 		int tenantId, aoId, commitId;
 		Date dateCommit, dateChange, dateCreate, dateUpdate;
@@ -288,25 +327,26 @@ public class SolderVaultFactory implements IVaultFactory {
 		public SRepo() {
 		}
 
-		public SRepo(String id, String schemaName, int tenantId, int aoId,String commitDir,String[] aExtensions) throws IOException {
+		public SRepo(String id, String schemaName, int tenantId, int aoId, String commitDir, String[] aExtensions)
+				throws IOException {
 			this.id = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 			this.schemaName = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
-			
-			if (commitDir==null) {
-				commitDir="";
+
+			if (commitDir == null) {
+				commitDir = "";
 			} else {
-				commitDir=commitDir.trim();
+				commitDir = commitDir.trim();
 			}
 			this.commitDir = commitDir;
-			
+
 			if (aExtensions != null) {
-				for (int i=0;i<aExtensions.length;i++) {
+				for (int i = 0; i < aExtensions.length; i++) {
 					aExtensions[i] = aExtensions[i].trim().toLowerCase();
 				}
 			}
-			
-			this.aExtension=aExtensions;
-			
+
+			this.aExtension = aExtensions;
+
 			this.tenantId = tenantId;
 			this.aoId = aoId;
 			commitId = 0;
@@ -319,8 +359,6 @@ public class SolderVaultFactory implements IVaultFactory {
 			getProvider(false);
 			insert();
 		}
-		
-		
 
 		public void serialize(Encoder encoder) throws IOException {
 			encoder.writeString("id", id);
@@ -374,11 +412,11 @@ public class SolderVaultFactory implements IVaultFactory {
 		public int getAoId() {
 			return aoId;
 		}
-		
+
 		public String getCommitDir() {
 			return commitDir;
 		}
-		
+
 		public String[] getExtensionToKeep() {
 			return aExtension;
 		}
@@ -539,17 +577,42 @@ public class SolderVaultFactory implements IVaultFactory {
 				throw SolderException.rethrow(e);
 			}
 		}
+
+		SCommit scommit;
+
+		public synchronized SCommit getLatestCommit() throws IOException {
+			if (commitId <= 0) {
+				return null;
+			}
+
+			if (scommit != null) {
+				if (scommit.getId() != this.commitId) {
+					scommit = null;
+				}
+			}
+			if (scommit == null) {
+				scommit = selectCommitById(commitId);
+			}
+			Objects.requireNonNull(scommit, "scommit " + commitId);
+			return scommit;
+		}
+
+		public List<SCommit> getAllCommit() throws IOException {
+			List<SCommit> listCommits = selectCommitByRepo(this.id);
+			Collections.sort(listCommits);
+			return listCommits;
+		}
 	}
 
-	public static SRepo getById(String id) throws IOException {
+	public static SRepo getRepoById(String id) throws IOException {
 		String idFinal = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 
 		String key = CacheHelper.getKey(CacheHelper.KEY_ID, idFinal);
-		return cacheRepo.getStoreIfAbsent(key, () -> selectById(idFinal), (srepo) -> srepo.cacheKeys());
+		return cacheRepo.getStoreIfAbsent(key, () -> selectRepoById(idFinal), (srepo) -> srepo.cacheKeys());
 
 	}
 
-	static SRepo selectById(String id) throws IOException {
+	static SRepo selectRepoById(String id) throws IOException {
 		TReference<SRepo> tref = new TReference<>();
 		SQLTm.get().select(reqQ.qRepoSelId, (encoder) -> {
 			encoder.writeString("id", id);
@@ -563,7 +626,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		return tref.get();
 	}
 
-	public static List<SRepo> selectBySchema(String schemaName) throws IOException {
+	public static List<SRepo> selectRepoBySchema(String schemaName) throws IOException {
 		String schemaNameFinal = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 		List<SRepo> list = new ArrayList<>();
 		SQLTm.get().select(reqQ.qRepoSelSchema, (encoder) -> {

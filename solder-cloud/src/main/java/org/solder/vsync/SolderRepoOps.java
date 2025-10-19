@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -33,7 +34,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nimbo.blobs.BlobFS;
+import org.nimbo.blobs.BlobFile;
 import org.nimbo.blobs.BlobFileTransact;
+import org.nimbo.blobs.Container;
 import org.nimbo.blobs.ContainerGroup;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
@@ -47,20 +50,17 @@ import com.beech.bfs.BeechFS;
 import com.beech.bfs.BeechLCommit;
 import com.beech.bfs.BeechLDirectory;
 import com.beech.bfs.Mode;
-import com.beech.compress.BytesCompressor;
 import com.ee.session.SessionManager;
+import com.ee.util.LogJsonDecoder;
 import com.ee.util.LogJsonEncoder;
 import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.RelPath;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
-import com.lnk.lucene.BytesRefInputStream;
-import com.lnk.lucene.BytesRefOutputStream;
 import com.lnk.lucene.LBytesRefBuilder;
 import com.lnk.lucene.TempFiles;
 import com.lnk.lucene.io.LDirectory;
-import com.lnk.lucene.record.RecordUtil;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
 import com.lnk.serializer.ISerializable;
@@ -94,26 +94,29 @@ public class SolderRepoOps {
 		}
 
 	}
-	
+
 	public enum EntryType {
-		BLOB(1),COMMIT(2);
-		
+		BLOB(1), COMMIT(2);
+
 		int type;
+
 		EntryType(int type) {
-			this.type=type;
+			this.type = type;
 		}
-		
+
 	}
-	
+
 	public static EntryType getEntryTypeEnum(int type) {
-		if (type==EntryType.BLOB.type) {
+		if (type == EntryType.BLOB.type) {
 			return EntryType.BLOB;
-		} else if (type==EntryType.COMMIT.type) {
+		} else if (type == EntryType.COMMIT.type) {
 			return EntryType.COMMIT;
 		} else {
 			return null;
 		}
 	}
+
+	static final SolderEntry[] EMPTY_SOLDER_ENTRY = new SolderEntry[0];
 
 	public static class SolderEntry implements ISerializable {
 		String stRelPath;
@@ -122,36 +125,34 @@ public class SolderRepoOps {
 		String digest;
 		long blobFsId;
 		int commitId;
-		
 
 		// Transient States.
 		File file;
-		
 
 		public SolderEntry() {
 		}
 
-		public SolderEntry(String relPath,EntryType etype, File file, long blobFsId, int commitId) throws IOException {
+		public SolderEntry(String relPath, EntryType etype, File file, long blobFsId, int commitId) throws IOException {
 			Validator.require(relPath, "rel path", Rules.NO_NULL_EMPTY);
 			Objects.requireNonNull(etype);
-			
+
 			Objects.requireNonNull(file, "file");
 			this.stRelPath = relPath;
-			this.etype=etype;
+			this.etype = etype;
 			this.tModified = file.lastModified();
 			this.size = file.length();
 			this.digest = computeDigest(file);
 			this.blobFsId = blobFsId;
 			this.commitId = commitId;
-			
-			//For building commits;
-			this.file=file;
+
+			// For building commits;
+			this.file = file;
 		}
 
 		public void setBlobId(long blobFsId) {
 			this.blobFsId = blobFsId;
 		}
-		
+
 		public void setCommitId(int commitId) {
 			this.commitId = commitId;
 		}
@@ -177,16 +178,14 @@ public class SolderRepoOps {
 			commitId = decoder.readInt("commit_id");
 		}
 
-		
-
 		public String getRelPath() {
 			return stRelPath;
 		}
-		
+
 		public EntryType getType() {
 			return etype;
 		}
-		
+
 		public long getLastModified() {
 			return tModified;
 		}
@@ -206,9 +205,10 @@ public class SolderRepoOps {
 		public int getCommitId() {
 			return commitId;
 		}
-		
+
 		public String toString() {
-			return String.format("SolderEntry %s type=%s len=%s (digest=%s lastMod=%d blobFsId=%s commitId=%d)",stRelPath,""+etype,size,digest,tModified,blobFsId,commitId);
+			return String.format("SolderEntry %s type=%s len=%s (digest=%s lastMod=%d blobFsId=%s commitId=%d)",
+					stRelPath, "" + etype, size, digest, tModified, blobFsId, commitId);
 		}
 	}
 
@@ -216,7 +216,7 @@ public class SolderRepoOps {
 	static final String SOLDER_LOCAL_REPO = "slrepo";
 	static final String LDIR_ROOT = "sl";
 	static final int LDIR_VERSION = 1;
-	
+
 	static final String BLOB_TYPE_SOLDER_COMMIT = "solder_commit";
 
 	static String getLocalRepoCommitPath() {
@@ -251,7 +251,7 @@ public class SolderRepoOps {
 		String stCommitDirRelPath;
 		Set<String> setExtensionsToAllow;
 		boolean fDirty = false;
-		
+
 		BeechLCommit lcommit;
 
 		LDirectory getLDirectory() throws IOException {
@@ -263,7 +263,7 @@ public class SolderRepoOps {
 
 				IOConsumer<BeechFS> onClose = (fsClose) -> {
 					IOUtils.closeQuietly(fsClose);
-					this.fs=null;
+					this.fs = null;
 				};
 				ldir = new BeechLDirectory(fs, fs.getFileName(), LDIR_ROOT, mode, onClose);
 
@@ -272,10 +272,7 @@ public class SolderRepoOps {
 			return ldir;
 		}
 
-		
-
-		SLocalRepo(SRepo repo, File fileLocalRepoRoot)
-				throws IOException {
+		public SLocalRepo(SRepo repo, File fileLocalRepoRoot) throws IOException {
 
 			srepo = Objects.requireNonNull(repo, "repo");
 			Validator.checkDir(fileLocalRepoRoot, false, "repo dir");
@@ -286,7 +283,7 @@ public class SolderRepoOps {
 				stCommitDirRelPath = "";
 			}
 			this.stCommitDirRelPath = stCommitDirRelPath.trim();
-			
+
 			String[] aExtToKeep = repo.getExtensionToKeep();
 
 			setExtensionsToAllow = new LinkedHashSet<>();
@@ -302,7 +299,6 @@ public class SolderRepoOps {
 			this.commitId = 0;
 			this.chash = "";
 			mapEntry = new LinkedHashMap<>();
-			
 
 			boolean fExist = fileCommitLocalRepo.exists();
 			if (fExist) {
@@ -310,7 +306,7 @@ public class SolderRepoOps {
 				this.loadLocalRepo();
 			} else {
 				mode = Mode.CREATE;
-				Validator.checkDir(fileCommitLocalRepo.getParentFile(),true,"local repo");
+				Validator.checkDir(fileCommitLocalRepo.getParentFile(), true, "local repo");
 				commitLocalRepo(true);
 			}
 		}
@@ -320,7 +316,7 @@ public class SolderRepoOps {
 		private void commitLocalRepo(boolean fCreate) throws IOException {
 			Mode.checkWrite(mode, SOLDER_LOCAL_REPO);
 
-			if (lcommit==null) {
+			if (lcommit == null) {
 				if (fCreate) {
 					lcommit = new BeechLCommit(SOLDER_LOCAL_REPO);
 				} else {
@@ -345,17 +341,12 @@ public class SolderRepoOps {
 					out.writeSetOfStrings(setExtensionsToAllow);
 					out.writeInt(commitId);
 					out.writeString(chash);
-					JsonEncoder jsonEncoder = RecordUtil.getTLJsonEncoder();
-					BytesRefOutputStream bros = new BytesRefOutputStream();
-					jsonEncoder.reset(bros);
-					JsonEncoder.serialize(jsonEncoder, () -> {
-						jsonEncoder.writeObjectArray("entries", aSolderEntry, false);
+					String stEntries = LogJsonEncoder.getTL().serialize((je)->{
+						JsonEncoder.serialize(je, () -> {
+							je.writeObjectArray("entries", aSolderEntry, false);
+						});
 					});
-
-					BytesCompressor bc = new BytesCompressor();
-					bc.setFastCompression(true);
-					bc.encode(bros.getBytesRef(), out);
-
+					out.writeString(stEntries);
 				});
 			} finally {
 				IOUtils.closeQuietly(ldir);
@@ -389,21 +380,16 @@ public class SolderRepoOps {
 					setExtensionsToAllow = in.readSetOfStrings();
 					commitId = in.readInt();
 					chash = in.readString();
-
-					BytesCompressor bc = new BytesCompressor();
-					LBytesRefBuilder brbTemp = new LBytesRefBuilder();
-					bc.decode(in, brbTemp);
-					BytesRefInputStream bris = new BytesRefInputStream();
-					bris.reset(brbTemp.get());
-
-					JsonDecoder jsonDecoder = RecordUtil.getTLJsonDecoder();
-					jsonDecoder.reset(bris);
-					JsonDecoder.deserialize(jsonDecoder, () -> {
-						SolderEntry[] aSolderEntry = jsonDecoder.readObjectArray("entries", SolderEntry.class);
-						mapEntry = new LinkedHashMap<>();
-						for (SolderEntry entry : aSolderEntry) {
-							mapEntry.put(entry.getRelPath(), entry);
-						}
+					
+					String stEntries = in.readString();
+					LogJsonDecoder.getTL().readJson(stEntries, (jd) -> {
+						JsonDecoder.deserialize(jd, () -> {
+							SolderEntry[] aSolderEntry = jd.readObjectArray("entries", SolderEntry.class);
+							mapEntry = new LinkedHashMap<>();
+							for (SolderEntry entry : aSolderEntry) {
+								mapEntry.put(entry.getRelPath(), entry);
+							}
+						});
 					});
 
 				});
@@ -412,8 +398,8 @@ public class SolderRepoOps {
 				IOUtils.closeQuietly(ldir);
 				ldir = null;
 			}
-			
-			this.lcommit=lcommitNew;
+
+			this.lcommit = lcommitNew;
 
 			fDirty = false;
 
@@ -436,83 +422,91 @@ public class SolderRepoOps {
 		}
 
 		public Collection<File> scan() {
-			//Put directory Filter...
+			// Put directory Filter...
 			FileFilter filter = (file) -> {
-				LOG.info("Directory filter examine "+file.getAbsolutePath());
+				LOG.info("Directory filter examine " + file.getAbsolutePath());
 				String name = file.getName();
 				return !CompareUtils.stringEquals(name, SOLDER_LOCAL_DIR);
 			};
-			IOFileFilter dirFilter =  new DelegateFileFilter(filter);
-			
+			IOFileFilter dirFilter = new DelegateFileFilter(filter);
+
 			return FileUtils.listFiles(fileRoot, getFileFilter(), dirFilter);
 		}
-		
-		public Map<String,SolderEntry> createEntryMap() throws IOException {
-			Map<String,SolderEntry> mapEntriesNow = new TreeMap<>();
+
+		public Map<String, SolderEntry> createEntryMap() throws IOException {
+			Map<String, SolderEntry> mapEntriesNow = new TreeMap<>();
 			Collection<File> collFile = scan();
-			
+
 			String prefix = null;
-			if (stCommitDirRelPath!=null && stCommitDirRelPath.length()>0) {
-				prefix = stCommitDirRelPath+"/";
+			if (stCommitDirRelPath != null && stCommitDirRelPath.length() > 0) {
+				prefix = stCommitDirRelPath + "/";
 			}
-			
+
 			for (File file : collFile) {
 				String path = relPath.relativize(file.getAbsolutePath());
-				EntryType etype = (prefix==null || path.startsWith(prefix))?EntryType.COMMIT:EntryType.BLOB;
-				SolderEntry se = new SolderEntry(path,etype,file,-1L,0);
+				EntryType etype = (prefix == null || path.startsWith(prefix)) ? EntryType.COMMIT : EntryType.BLOB;
+				SolderEntry se = new SolderEntry(path, etype, file, -1L, 0);
 				mapEntriesNow.put(path, se);
-				LOG.info(String.format("Collecting file %s",""+se));
+				LOG.info(String.format("Collecting file %s", "" + se));
 			}
 			return mapEntriesNow;
 		}
 
 	}
-	static final String COMMITS_BEE="Commits.bee";
-	static final String COMMIT_DETAIL="_SCommitDetail";
-	public static class CommitInfo  implements ISerializable {
-		
-		//Will be finally constructed
+
+	static final String COMMITS_BEE = "Commits.bee";
+	static final String COMMIT_DETAIL = "_SCommitDetail";
+
+	public static class CommitInfo implements ISerializable {
+
+		// Will be finally constructed
 		String cHash;
-		List<SolderEntry> listAll,listAdd,listDel;
+		Map<String, SolderEntry> mapAll;
+		List<String> listAdd, listDel;
+
 		int commitId;
-		
-		
+
 		StringBuilder sbHash;
 		BeechFS fsCommit = null;
 		File fileTmpDir;
 		File fileCommit;
-		
+
 		boolean fNewCommit;
-		
-		public CommitInfo() {}
-		
-		CommitInfo(SLocalRepo lRepo) throws IOException{
+
+		public CommitInfo() {
+		}
+
+		CommitInfo(SLocalRepo lRepo) throws IOException {
 			sbHash = new StringBuilder();
-			
-			
+
 			Map<String, SolderEntry> mapSolderEntry = new LinkedHashMap<>();
 			mapSolderEntry.putAll(lRepo.mapEntry);
-			
-			Map<String,SolderEntry> mapEntriesNow = lRepo.createEntryMap();
-			
+
+			Map<String, SolderEntry> mapEntriesNow = lRepo.createEntryMap();
+
 			TempFiles tempFiles = TempFiles.get(TempFiles.DEFAULT);
-			fileTmpDir = tempFiles.getTempDir(lRepo.srepo.getId() + "_rep_" + System.currentTimeMillis());
+			String repIdLog = lRepo.srepo.getId();
+			if (repIdLog.length() > 6) {
+				repIdLog = repIdLog.substring(0, 6);
+			}
+			fileTmpDir = tempFiles.getTempDir(repIdLog);
 			Validator.checkDir(fileTmpDir, true, "temp dir");
 
-			
-			
 			fileCommit = new File(fileTmpDir, COMMITS_BEE);
 			fsCommit = new BeechFS(fileCommit, Mode.CREATE);
-			
-			listAll = new ArrayList<>();
+
+			mapAll = new TreeMap<>();
 			listAdd = new ArrayList<>();
 			listDel = new ArrayList<>();
-			
+
 			commitId = -1;
 
-			IOConsumer<SolderEntry> cHashBuilder= (se)->{
-				listAll.add(se);
-				sbHash.append(String.format("%s %s\r\n",se.stRelPath,se.digest));
+			IOConsumer<SolderEntry> cHashBuilder = (se) -> {
+				var prev = mapAll.put(se.getRelPath(), se);
+				if (prev != null) {
+					throw new SolderException("Found a prev entry for " + se.getRelPath());
+				}
+				sbHash.append(String.format("%s %s\r\n", se.stRelPath, se.digest));
 			};
 
 			for (var entry : mapEntriesNow.entrySet()) {
@@ -526,107 +520,124 @@ public class SolderRepoOps {
 					IOUtils.copy(is, os);
 					os.close();
 					cHashBuilder.accept(se);
-					
+
 				} else if (se.etype == EntryType.BLOB) {
-					
-					//Either we have it or not...
+
+					// Either we have it or not...
 					SolderEntry sePrev = mapSolderEntry.remove(relPath);
 					if (sePrev != null) {
-						//We have it..
+						// We have it..
 						cHashBuilder.accept(sePrev);
 					} else {
-						//New File...
+						// New File...
 						se.setCommitId(commitId);
-						listAdd.add(se);
 						cHashBuilder.accept(se);
+						listAdd.add(se.getRelPath());
 					}
-					
+
 				} else {
-					throw new SolderException("Unknown type "+se.etype);
+					throw new SolderException("Unknown type " + se.etype);
 				}
-				
+
 			}
-			
+
 			for (SolderEntry seDel : mapSolderEntry.values()) {
-				if (seDel.etype==EntryType.BLOB) {
-					listDel.add(seDel);
-					sbHash.append(String.format("%s %s\r\n",seDel.stRelPath,"DELETE"));
+				if (seDel.etype == EntryType.BLOB) {
+					listDel.add(seDel.getRelPath());
+					sbHash.append(String.format("%s %s\r\n", seDel.stRelPath, "DELETE"));
 				}
 			}
-			
+
 			byte[] aBHashBytes = sbHash.toString().getBytes(StandardCharsets.UTF_8);
-			
+
 			MessageDigest md = tlMessageDigest.get();
 			md.reset();
 			md.update(aBHashBytes);
 			cHash = PrintUtils.toHexString(md.digest());
 			fNewCommit = !CompareUtils.stringEquals(lRepo.chash, cHash);
-			
-			LOG.info(String.format("Commit %s**(fNewCommit=%s)\r\n%s\rnHash=%s (lRepoHash=%s) (nAdd=%d,nDel=%d)", lRepo.srepo.getId(),""+fNewCommit,sbHash,cHash,lRepo.chash,listAdd.size(),listDel.size()));
-			
+
+			LOG.info(String.format("Commit %s**(fNewCommit=%s)\r\n%s\rnHash=%s (lRepoHash=%s) (nAdd=%d,nDel=%d)",
+					lRepo.srepo.getId(), "" + fNewCommit, sbHash, cHash, lRepo.chash, listAdd.size(), listDel.size()));
+
 			if (fNewCommit) {
 				commitId = SolderVaultFactory.generateCommitId();
-				for (SolderEntry se : listAdd) {
+				for (String st : listAdd) {
+					var se = mapAll.get(st);
 					se.setCommitId(commitId);
 				}
-				
-				OutputStream os = fsCommit.create(COMMIT_DETAIL);
-				LogJsonEncoder.getTL().serialize(this,(br)->{
-					os.write(br.bytes,0,br.length);
-				});
-				os.close();
 			}
-			
-			
-			fsCommit.close();
-			
-			
 		}
 		
+		public void finalizeFsCommit() throws IOException {
+			if (fNewCommit) {
+				OutputStream os = fsCommit.create(COMMIT_DETAIL);
+				LogJsonEncoder.getTL().serialize(this, (br) -> {
+					os.write(br.bytes, 0, br.length);
+				});
+				os.close();
+				fsCommit.commit();
+			} else {
+				//Dont bother with commiting etc.. Just close...
+			}
+			
+			fsCommit.close();
+			fsCommit=null;
+		}
+
 		public void serialize(Encoder encoder) throws IOException {
 			encoder.writeInt("commit_id", commitId);
 			encoder.writeString("chash", cHash);
-			encoder.writeList("se_all", listAll,false);
-			encoder.writeList("se_add", listAdd,false);
-			encoder.writeList("se_del", listDel,false);
+			encoder.writeObjectArray("se_all", mapAll.values().toArray(EMPTY_SOLDER_ENTRY), false);
+			encoder.writeStringArray("se_add", listAdd.toArray(PrintUtils.EMPTY_STRING_ARRAY));
+			encoder.writeStringArray("se_del", listDel.toArray(PrintUtils.EMPTY_STRING_ARRAY));
 		}
 
+		static List<String> toList(String[] a) {
+			List<String> list = new ArrayList<>();
+			if (a !=null) {
+				for (String st : a) {
+					list.add(st);
+				}
+			}
+			return list;
+		}
+		
 		public void deserialize(Decoder decoder) throws IOException {
 			commitId = decoder.readInt("commit_id");
 			cHash = decoder.readString("chash");
-			listAll = decoder.readList("se_all",SolderEntry.class);
-			listAdd = decoder.readList("se_add",SolderEntry.class);
-			listDel = decoder.readList("se_del",SolderEntry.class);
+
+			SolderEntry[] aAll = decoder.readObjectArray("se_all", SolderEntry.class);
+			mapAll = new LinkedHashMap<>();
+			if (aAll!=null) {
+				for (var se : aAll) {
+					mapAll.put(se.getRelPath(), se);
+				}
+			}
+			listAdd = toList(decoder.readStringArray("se_add"));
+			listDel = toList(decoder.readStringArray("se_del"));
 		}
 
 		public int getCommitId() {
 			return commitId;
 		}
-		
+
 		public String getCHash() {
 			return cHash;
 		}
-		
-		public List<SolderEntry> getAllEntry() {
-			return listAll;
-		}
 
-		public List<SolderEntry> getAddEntry() {
+		
+		public List<String> getAddEntryRelPath() {
 			return listAdd;
 		}
-		
-		public List<SolderEntry> getDelEntry() {
+
+		public List<String> getDelEntryRelPath() {
 			return listDel;
 		}
-		
-		public Map<String, SolderEntry> makeLocalRepoMap() {
-			Map<String, SolderEntry> map = new TreeMap<>();
-			for (var se : listAll) {
-				map.put(se.stRelPath, se);
-			}
-			return map;
+
+		public Map<String, SolderEntry> getAllEntry() {
+			return mapAll;
 		}
-		
+
 	}
 
 	/**
@@ -642,14 +653,13 @@ public class SolderRepoOps {
 	 * @param fileCache
 	 * @throws IOException
 	 */
-	public static void repInit(SRepo srepo, File fileCache)
-			throws IOException {
-		
+	public static void repInit(SRepo srepo, File fileCache) throws IOException {
+
 		SLocalRepo lrepo = new SLocalRepo(srepo, fileCache);
 		if (srepo.getCommitId() > 0) {
 			// Repository has commits..
 			// Get the Latest..
-			LOG.info(String.format("Repo %s has commit; latest=%d (date=%s)", srepo.getId(),srepo.getCommitId(),
+			LOG.info(String.format("Repo %s has commit; latest=%d (date=%s)", srepo.getId(), srepo.getCommitId(),
 					PrintUtils.print(srepo.getCommitDate())));
 			repoCheckout(lrepo, true);
 		} else {
@@ -663,13 +673,154 @@ public class SolderRepoOps {
 
 		// tmp Dir wil
 		
+		//Get the latest commit..
+		SRepo srepo = lrepo.srepo;
+		int commitId = srepo.getCommitId();
+		int lcommitId = lrepo.commitId;
+		LOG.info(String.format("Repo %s has commit; latest=%d (date=%s) current=%d", srepo.getId(), srepo.getCommitId(),
+				PrintUtils.print(srepo.getCommitDate()),lcommitId));
+		if (commitId <=0 || lcommitId==commitId) {
+			//Nothing to do..
+			return;
+		}
+		SCommit scommit =  srepo.getLatestCommit();
+		Objects.requireNonNull(scommit);
+		
+		LOG.info(String.format("Checkout(rebase/clone) commit %d(hash=%s) for rep=%s",scommit.getId(),scommit.getCHash(),srepo.getId()));
+		
+		BlobFS blobFsCommit = scommit.getBlobFs();
+		BlobFile blobFile = Container.read(blobFsCommit);
+		
+		File fileDownload = blobFile.getFile();
+		BeechFS fsCommit = new BeechFS(fileDownload, Mode.READONLY);
+		
+		//Get fS d
+		
+		InputStream is = fsCommit.read(COMMIT_DETAIL);
+		LBytesRefBuilder brb = new LBytesRefBuilder();
+		brb.append(is, -1, true);
+		IOUtils.closeQuietly(is);
+		String stJson = brb.get().utf8ToString();
+		CommitInfo commitInfo = LogJsonDecoder.getTL().readObject(stJson, CommitInfo.class);
 		Map<String,SolderEntry> mapEntriesNow = lrepo.createEntryMap();
 		
+		//Careful with overwriting etc. (first copy all new additions)
+		//Sync the commits..
+		//do the deletions and then the orphans if asked to...
+		
+		Map<String,SolderEntry> mapCommit = new LinkedHashMap<>();
+		mapCommit.putAll(commitInfo.getAllEntry());
+		MessageDigest md = tlMessageDigest.get();
+		for (String stAddRelPath : commitInfo.getAddEntryRelPath()) {
+			SolderEntry seAdd = mapCommit.remove(stAddRelPath);
+			Objects.requireNonNull(seAdd,"solder entry "+stAddRelPath);
+			
+			//
+			SolderEntry seCurrent= mapEntriesNow.remove(stAddRelPath);
+			boolean fFetch = true;
+			if (seCurrent!= null) {
+				//Probably a previous abort brought it..
+				//Check the hashes.
+				if (CompareUtils.stringEquals(seCurrent.digest, seAdd.digest)) {
+					//We have it with correct digest.. Nothing to do..
+					LOG.info(String.format("Add %s (Exists with matching digest %s, Nothing to do.",stAddRelPath,seAdd.digest));
+					fFetch=false;
+				} else {
+					LOG.info(String.format("Add %s (Exists with non-matching curr(sz=%d;digest=%s) add=(sz=%d, digest=%s), delete and refetch.",stAddRelPath,seCurrent.digest,seCurrent.size,seAdd.digest));
+					seCurrent.file.delete();
+					if (seCurrent.file.exists()) {
+						throw new SolderException("Unable to delete existing file "+seCurrent.file.getAbsolutePath());
+					}
+				}
+			}
+			if (fFetch) {
+				long fsId = seAdd.getBlobFsId();
+				BlobFS blobFs = BlobFS.getById(fsId);
+				Objects.requireNonNull(blobFs,"blobFs "+fsId);
+				BlobFile blobFileAdd = Container.read(blobFs);
+				File fileSrc = blobFileAdd.getFile();
+				File fileDest = lrepo.relPath.resolve(stAddRelPath);
+				Validator.checkNewFile(fileDest,true, stAddRelPath);
+				md.reset();
+				InputStream isSrc = new FileInputStream(fileSrc);
+				OutputStream os = new FileOutputStream(fileDest);
+				DigestOutputStream dos = new DigestOutputStream(os,md);
+				IOUtils.copy(isSrc,dos);
+				dos.close();
+				
+				String stDigestWritten = PrintUtils.toHexString(md.digest());
+				LOG.info(String.format("New Blob File %s",seAdd.toString()));
+				
+				if (!CompareUtils.stringEquals(seAdd.digest, stDigestWritten)) {
+					throw new SolderException("Digest match erorr for "+stAddRelPath+"; writtenDigest="+stDigestWritten+"; expect="+seAdd.digest);
+				}
+			}
+		}
+		
+		//Sync the Commits...
+		for (var iter = mapCommit.values().iterator();iter.hasNext();) {
+			SolderEntry seCommit = iter.next();
+			iter.remove();
+			String stRelPath = seCommit.getRelPath();
+			SolderEntry seCurrent= mapEntriesNow.remove(stRelPath);
+			boolean fCopy = true;
+			if (seCurrent!= null) {
+				//Probably a previous abort brought it..
+				//Check the hashes.
+				if (CompareUtils.stringEquals(seCurrent.digest, seCommit.digest)) {
+					//We have it with correct digest.. Nothing to do..
+					LOG.info(String.format("Add %s (Exists with matching digest %s, Nothing to do.",stRelPath,seCommit.digest));
+					fCopy=false;
+				} else {
+					LOG.info(String.format("Commit %s (Exists with non-matching curr(sz=%d;digest=%s) add=(sz=%d, digest=%s), delete and refetch.",stRelPath,seCurrent.digest,seCurrent.size,seCommit.digest));
+					seCurrent.file.delete();
+					if (seCurrent.file.exists()) {
+						throw new SolderException("Unable to delete existing file "+seCurrent.file.getAbsolutePath());
+					}
+				}
+			}
+			
+			if (fCopy) {
+				
+				File fileDest = lrepo.relPath.resolve(stRelPath);
+				Validator.checkNewFile(fileDest,true, stRelPath);
+				md.reset();
+				InputStream isSrc = fsCommit.read(stRelPath);
+				OutputStream os = new FileOutputStream(fileDest);
+				DigestOutputStream dos = new DigestOutputStream(os,md);
+				IOUtils.copy(isSrc,dos);
+				dos.close();
+				
+				String stDigestWritten = PrintUtils.toHexString(md.digest());
+				LOG.info(String.format("New Commit File %s",seCommit.toString()));
+				if (!CompareUtils.stringEquals(seCommit.digest, stDigestWritten)) {
+					throw new SolderException("Digest match erorr for "+stRelPath+"; writtenDigest="+stDigestWritten+"; expect="+seCommit.digest);
+				}
+			}
+		}
+		
+		
+		//Sync the Deletes..
+		for (var iter = mapEntriesNow.values().iterator();iter.hasNext();) {
+			//Delete 
+			SolderEntry se = iter.next();
+			iter.remove();
+			LOG.info(String.format("REMOVING extra %s ",se.getRelPath()));
+			se.file.delete();
+		}
+		
+		//Set the Local File...
+		// BeechLCommit lcommit;
+
+		lrepo.commitId = commitInfo.commitId;
+		lrepo.chash = commitInfo.cHash;
+		lrepo.mapEntry = commitInfo.getAllEntry();
+		lrepo.commitLocalRepo(false);
 		
 
 	}
 
-	public static void repCommit(SRepo srepo, File fileCache)
+	public static void repCommit(SRepo srepo, File fileCache, Consumer<Map<String, String>> cCommitProp)
 			throws IOException {
 
 		// SVault svault;
@@ -677,29 +828,34 @@ public class SolderRepoOps {
 		// IOException {
 		String cgName = SolderMain.getSolderContainerGroupName();
 		ContainerGroup cg = ContainerGroup.get(cgName);
-		
-		Objects.requireNonNull(cg, " cg " + cgName);
-		
 
-		SLocalRepo lRepo = new SLocalRepo(srepo,fileCache);
+		Objects.requireNonNull(cg, " cg " + cgName);
+
+		SLocalRepo lRepo = new SLocalRepo(srepo, fileCache);
 		CommitInfo commitInfo = new CommitInfo(lRepo);
-		
+
 		if (!commitInfo.fNewCommit) {
 			LOG.info(String.format("repCommit found no new changes, Nothing to do"));
 			return;
 		}
-		
-		//We may want to check if anything change at all...
+
+		// We may want to check if anything change at all...
 		CryptoScheme cs = CryptoScheme.getDefault();
 		Map<String, String> mapCommitInfo = new HashMap<>();
 		mapCommitInfo.put("commit", "some message");
-		SCommit scommit = new SCommit(srepo, commitInfo.getCHash(),mapCommitInfo,commitInfo.commitId);
-		
-	 
-		
+
+		if (cCommitProp != null) {
+			cCommitProp.accept(mapCommitInfo);
+		}
+
+		SCommit scommit = new SCommit(srepo, commitInfo.getCHash(), mapCommitInfo, commitInfo.commitId);
+
 		MessageDigest md = tlMessageDigest.get();
-		for (SolderEntry se : commitInfo.listAdd) {
+		for (String stAddRelPath : commitInfo.listAdd) {
 			// Create a new item...
+			SolderEntry se = commitInfo.mapAll.get(stAddRelPath);
+			Objects.requireNonNull(se);
+			
 			md.reset();
 			String name = cs.getUUID();
 
@@ -708,7 +864,7 @@ public class SolderRepoOps {
 			mapInfo.put("pid", SessionManager.getPid());
 
 			File fileRep = se.file;
-			
+
 			Validator.checkFile(fileRep, "path " + se.getRelPath());
 
 			BlobFS blob = new BlobFS(name, SolderVaultFactory.TYPE, srepo.getId(), commitInfo.commitId, mapInfo, null);
@@ -744,14 +900,15 @@ public class SolderRepoOps {
 				}
 			}
 		}
-		
-		
-		//Actual Commit file..
-		//fileCommit
+
+		// Actual Commit file..
+		// fileCommit
+		commitInfo.finalizeFsCommit();
 		Map<String, String> mapInfo = new HashMap<>();
 		mapInfo.put("pid", SessionManager.getPid());
 		String name = cs.getUUID();
-		BlobFS blobCommit = new BlobFS(name, BLOB_TYPE_SOLDER_COMMIT, srepo.getId(), commitInfo.commitId, mapInfo, null);
+		BlobFS blobCommit = new BlobFS(name, BLOB_TYPE_SOLDER_COMMIT, srepo.getId(), commitInfo.commitId, mapInfo,
+				null);
 		BlobFileTransact bft = cg.beginFileTransact(blobCommit);
 		boolean fError = true;
 		FileOutputStream fos = null;
@@ -765,7 +922,8 @@ public class SolderRepoOps {
 			dos.close();
 			fError = false;
 			bft.commit();
-			//Create SCommit.
+			// Create SCommit.
+			scommit.setBlobFsId(blobCommit.getId());
 			scommit.insert();
 			srepo.updateCommit(scommit);
 
@@ -775,11 +933,11 @@ public class SolderRepoOps {
 				bft.abort();
 			}
 		}
-		
-		//Do the actual deletions by changing ownere..
+
+		// Do the actual deletions by changing ownere..
 		// Use to delete
-		
-		if (commitInfo.listDel.size()>0) {
+
+		if (commitInfo.listDel.size() > 0) {
 			List<BlobFS> listPrev = BlobFS.selectByOwner(SolderVaultFactory.TYPE, srepo.getId());
 			LOG.info(String.format("SVault rep %s found %d objects.", srepo.getId(), listPrev.size()));
 
@@ -791,22 +949,22 @@ public class SolderRepoOps {
 				}
 			}
 			String ownerDelete = srepo.getId() + "_del";
-			for (SolderEntry se : commitInfo.listDel) {
-				BlobFS fsToDelete = mapBlobFSPrev.get(se.getRelPath());
+			for (String stDelRelPath : commitInfo.listDel) {
+				BlobFS fsToDelete = mapBlobFSPrev.get(stDelRelPath);
 				if (fsToDelete != null) {
 					fsToDelete.updateOwner(null, ownerDelete);
 				}
 			}
 		}
-		
-		//Update your local REP....
+
+		// Update your local REP....
 		// BeechLCommit lcommit;
-		
-		lRepo.commitId= commitInfo.commitId;
+
+		lRepo.commitId = commitInfo.commitId;
 		lRepo.chash = commitInfo.cHash;
-		lRepo.mapEntry = commitInfo.makeLocalRepoMap();
+		lRepo.mapEntry = commitInfo.getAllEntry();
 		lRepo.commitLocalRepo(false);
-		
+
 	}
 
 }
