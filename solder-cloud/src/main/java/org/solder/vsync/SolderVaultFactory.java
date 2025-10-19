@@ -4,18 +4,19 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SAudit;
 import org.solder.core.SEvent;
+import org.solder.core.SolderException;
 
 import com.beech.store.FileVaultProvider;
 import com.beech.store.IVaultFactory;
@@ -27,6 +28,8 @@ import com.ee.session.db.BackgroundTask;
 import com.ee.session.db.EEvent;
 import com.ee.session.db.Event;
 import com.ee.session.db.Tenant;
+import com.jnk.util.PrintUtils;
+import com.jnk.util.TReference;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
 import com.jnk.util.cache.Cache;
@@ -41,157 +44,293 @@ import com.lnk.lucene.RunOnce;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
 
+public class SolderVaultFactory implements IVaultFactory {
 
-
-public class SolderVaultFactory implements IVaultFactory{
-	
 	private static Log LOG = LogFactory.getLog(SolderVaultFactory.class.getName());
+
+	public static final String TYPE = "solder_repo";
 	
-	public static final String TYPE = "solder_vf";
-	
+
 	public SolderVaultFactory() {
-		TVault.registerFactory(this); 
+		TVault.registerFactory(this);
 	}
-	
+
 	public String getType() {
 		return TYPE;
 	}
-	
-	public IVaultProvider getProvider(String stFactoryParams,boolean fReadOnly) throws IOException {
+
+	public IVaultProvider getProvider(String stFactoryParams, boolean fReadOnly) throws IOException {
 		String id = stFactoryParams;
-		 SVault svault = getById(id);
-		 Objects.requireNonNull(svault,"SVault "+id);
-		 return svault.getProvider(fReadOnly);
+		SRepo srepo = getById(id);
+		Objects.requireNonNull(srepo, "srepo " + id);
+		return srepo.getProvider(fReadOnly);
 	}
-	
-	
-	
-	static final String SVAULT_TABLE = "svault";
-	
-	
+
+	static final String SREPO_TABLE = "srepo";
+	static final String SCOMMIT_TABLE = "scommit";
+	static final String SCOMMIT_SEQ = "scommit_seq";
+
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
-	static VaultQueries vaultQ = null;
-	static Cache<SVault> cacheSVault = null;
-	
-	
+	static RepQueries reqQ = null;
+	static Cache<SRepo> cacheRepo = null;
 
 	public static void init(SQLDatabase db) throws IOException {
 		SQLDatabase dbFinal = Objects.requireNonNull(db, "db");
 		RunOnce.ensure(s_fInit, () -> {
-			vaultQ = new VaultQueries(dbFinal.getName(), dbFinal.getType());
+			reqQ = new RepQueries(dbFinal.getName(), dbFinal.getType());
 		});
 	}
 
-	public static class VaultQueries {
+	public static class RepQueries {
 
-		SQLTableSchema tsVault;
+		SQLTableSchema tsRepo, tsCommit;
 
-		SQLQuery qVaultIns, qVaultSelAll, qVaultUpdRep,qVaultUpdChange, qVaultDelOne;
+		SQLQuery qRepoIns, qRepoSelId, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne;
 
-		VaultQueries(String dbName, DBType dbType) throws IOException {
+		SQLQuery qCommitIns,  qCommitSelRepo, qCommitDelOne,qCommitSeq;
+
+		RepQueries(String dbName, DBType dbType) throws IOException {
 
 			// (name,fieldType(canonicalName),[flags(0,1),nSpit])
 
-			tsVault = new SQLTableSchema(SVAULT_TABLE);
-			tsVault.parseAndAdd(new String[] { "id,string(48),1", "tschema,string(16),1","tenant_id,int,1", "ao_id,int,1",
-					"rep_info,string,0,3","rep_date,date,1","change_date,date,1", "create_date,date,1", "last_update,date,1" });
-			
-			
+			tsRepo = new SQLTableSchema(SREPO_TABLE);
+			tsRepo.parseAndAdd(new String[] { "id,string(48),1", "tschema,string(16),1", "tenant_id,int,1",
+					"ao_id,int,1","commit_dir,string,0","ext_keep,string,1","commit_id,int,1", "commit_date,date,1", "change_date,date,1", "create_date,date,1",
+					"last_update,date,1" });
 
 			String stPrimaryKey = "id";
-			String[] aUnique = new String[] {"tschema,tenant_id,ao_id"};
+			String[] aUnique = new String[] { "tschema,tenant_id,ao_id" };
 			String[] aIndex = null;
-			tsVault.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, null);
-			tsVault.setReadOnly();
-			SQLTableSchema.register(tsVault);
+			tsRepo.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, null);
+			tsRepo.setReadOnly();
+			SQLTableSchema.register(tsRepo);
 
 			// This is only for logging (Developers can use this to create scripts suitable
 			// to any
 			// supported database.
-			MSSQLUtil.getCreateTableScript(tsVault);
+			MSSQLUtil.getCreateTableScript(tsRepo);
 
-			qVaultIns = DriverUtil.createInsertQuery(dbName, dbType, tsVault);
-			qVaultSelAll = DriverUtil.createSelectQuery(dbName, dbType, tsVault, null, "All");
-			qVaultUpdRep = DriverUtil.createUpdateQuery(dbName, dbType, tsVault, "rep_info,rep_date,last_update", "id",
-					"Rep");
-			qVaultUpdChange = DriverUtil.createUpdateQuery(dbName, dbType, tsVault, "change_date,last_update", "id",
+			qRepoIns = DriverUtil.createInsertQuery(dbName, dbType, tsRepo);
+			qRepoSelId = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "id", "ById");
+			qRepoSelSchema = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tschema", "BySchema");
+			qRepoUpdCommit = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "commit_id,commit_date,last_update",
+					"id", "Commit");
+			qRepoUpdChange = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "change_date,last_update", "id",
 					"Change");
-			qVaultDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsVault, "id", "One");
-			SQLQuery.addToMap(qVaultIns, qVaultSelAll, qVaultUpdRep,qVaultUpdChange, qVaultDelOne);
+			qRepoDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsRepo, "id", "One");
+			SQLQuery.addToMap(qRepoIns, qRepoSelId, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne);
+
+			cacheRepo = BackgroundTask.get().createCache(SREPO_TABLE, true);
+
+			tsCommit = new SQLTableSchema(SCOMMIT_TABLE);
+			tsCommit.parseAndAdd(new String[] { "id,int,1", "repo_id,string(48),1", "chash,string(128),1",
+					"tenant_id,int,1", "create_date,date,1", "info,string,0,3" });
+
+			stPrimaryKey = "id";
+			aUnique = new String[] { "repo_id,chash" };
+			aIndex = null;
 			
-			cacheSVault = BackgroundTask.get().createCache(SVAULT_TABLE, false);
+			tsCommit.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SCOMMIT_SEQ);
+			tsCommit.setReadOnly();
+			SQLTableSchema.register(tsCommit);
+
+			MSSQLUtil.getCreateTableScript(tsCommit);
+			MSSQLUtil.getCreateSequenceScript(SCOMMIT_SEQ);
+
+			qCommitSeq = DriverUtil.createSequenceQuery(dbName, dbType, tsCommit, SCOMMIT_SEQ);
+			qCommitIns = DriverUtil.createInsertQuery(dbName, dbType, tsCommit);
+			
+			qCommitSelRepo = DriverUtil.createSelectQuery(dbName, dbType, tsCommit, "repo_id", "ByRepo");
+			qCommitDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsCommit, "id", "One");
+			SQLQuery.addToMap(qCommitIns, qCommitSelRepo, qCommitDelOne,qCommitSeq);
 		}
 	}
+	
 
 	
-	public static void syncObjects() throws IOException{
-		List<SVault> list = selectAll();
-		
-		cacheSVault.reloadAll((_) -> {
-			for (SVault svault : list) {
-				cacheSVault.store(svault, svault::cacheKeys);
+	static int generateCommitId() throws IOException {
+		return (int) SQLTm.get().nextSequenceId(reqQ.qCommitSeq);
+	}
+	
+	public static class SCommit {
+		int id;
+	
+		String chash,repoId;
+		int tenantId;
+		Date dateCreate;
+		Map<String,String> mapInfo;
+
+		public SCommit() {
+		}
+
+		public SCommit(SRepo repo, String chash,Map<String, String> mapInfo,int commitId) throws IOException {
+			//Generated from sequence.
+			if (commitId <=0 || commitId <= repo.getCommitId()) {
+				throw new SolderException("Invalid commitId "+commitId);
 			}
-		});
+			this.id = commitId;
+			Objects.requireNonNull(repo,"repo");
+			this.repoId = repo.getId();
+			
+			this.chash = Validator.require(chash, "chash", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			this.tenantId = repo.getTenantId();
 		
-	}
-	
-	public enum VaultSchemaName {
-		BMESSAGE_INDEX("bmsg_index");
-		String canonicalName;
-		private VaultSchemaName(String name) {
-			canonicalName = Validator.require(name, "name", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			dateCreate = new Date();
+			if (mapInfo == null) {
+				mapInfo = new LinkedHashMap<>();
+			}
+			this.mapInfo = mapInfo;
+		}
+
+		public void serialize(Encoder encoder) throws IOException {
+			encoder.writeInt("id", id);
+			encoder.writeString("repo_id", repoId);
+			encoder.writeString("chash", chash);
+			encoder.writeInt("tenant_id", tenantId);
+			encoder.writeDate("create_date", dateCreate);
+			encoder.writeProperties("info", mapInfo);
+		}
+
+		public void deserialize(Decoder decoder) throws IOException {
+			
+			id = decoder.readInt("id");
+			repoId = decoder.readString("repo_id");
+			chash = decoder.readString("chash");
+			tenantId = decoder.readInt("tenant_id");
+			dateCreate = decoder.readDate("create_date");
+			mapInfo = decoder.readProperties("info");
+		}
+
+		
+
+		public int getId() {
+			return id;
+		}
+
+		public String getRepoId() {
+			return repoId;
+		}
+
+		public String getCHash() {
+			return chash;
+		}
+
+		public int getTenantId() {
+			return tenantId;
+		}
+
+		
+		public Date getCreateDate() {
+			return dateCreate;
+		}
+
+		public Map<String, String> getInfo() {
+			return mapInfo;
+		}
+
+		
+
+		void insert() throws IOException {
+			// We get the transactions sqlTm.
+			if (id < 0) {
+				throw new SolderException("Commit Id not set");
+			}
+			SQLTm.get().executeOne(reqQ.qCommitIns, this::serialize, null);
+			Event.log(SEvent.SCommitCreate,id , tenantId, (mb) -> {
+				mb.put("repo_id", repoId);
+				mb.put("chash", chash);
+			});
 		}
 		
-		public String getCanonicalName() {
-			return canonicalName;
+		public void delete() throws IOException {
+			int i = SQLTm.get().executeOne(reqQ.qCommitDelOne, (encoder) -> {
+				encoder.writeInt("id", id);
+			}, null);
+
+			if (i < 1) {
+				Event.log(EEvent.DbDeleteFail, id, tenantId, (mb) -> {
+					mb.put("table", "srepo");
+					mb.put("id", id);
+				});
+			} else {
+				Event.log(SEvent.SCommitDelete,id , tenantId, (mb) -> {
+					mb.put("repo_id", repoId);
+					mb.put("chash", chash);
+				});
+			}
+
 		}
+		
+		
 	}
 
-	
-	String id;
-	String schemaName;
-	int tenantId,aoId;
-	
-	
-	public static class SVault  {
-		String id,schemaName; 
-		int tenantId,aoId;
-		
-		
-		//Each file in stored in BlobFS 
-		//long fsId;
-		//String relPath,digest;
-		
-		//Commits must be synced up.
-		Map<String,String> repInfo;
-		Date dateRep,dateChange,dateCreate,dateUpdate;
-		
-		public SVault() {}
-		
-		public SVault(String id,String schemaName,int tenantId,int aoId) throws IOException {
-			this.id = Validator.require(id,"id",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			this.schemaName = Validator.require(schemaName,"schema name",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			this.tenantId=tenantId;
-			this.aoId=aoId;
-			repInfo = new HashMap<>();
-			dateCreate=new Date();
+	static List<SCommit> selectByRepo(String repoId) throws IOException {
+		String repoIdFinal = Validator.require(repoId, "repo_id", Rules.NO_NULL_EMPTY,Rules.TRIM);
+		List<SCommit> list = new ArrayList<>();
+		SQLTm.get().select(reqQ.qCommitSelRepo, (encoder) -> {
+			encoder.writeString("repo_id", repoIdFinal);
+		}, (decoder) -> {
+			while (decoder.next()) {
+				SCommit scommit = new SCommit();
+				scommit.deserialize(decoder);
+				list.add(scommit);
+			}
+		}, null);
+		return list;
+	}
+
+	public static class SRepo {
+		String id, schemaName,commitDir;
+		String[] aExtension;
+		int tenantId, aoId, commitId;
+		Date dateCommit, dateChange, dateCreate, dateUpdate;
+
+		public SRepo() {
+		}
+
+		public SRepo(String id, String schemaName, int tenantId, int aoId,String commitDir,String[] aExtensions) throws IOException {
+			this.id = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			this.schemaName = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			
+			if (commitDir==null) {
+				commitDir="";
+			} else {
+				commitDir=commitDir.trim();
+			}
+			this.commitDir = commitDir;
+			
+			if (aExtensions != null) {
+				for (int i=0;i<aExtensions.length;i++) {
+					aExtensions[i] = aExtensions[i].trim().toLowerCase();
+				}
+			}
+			
+			this.aExtension=aExtensions;
+			
+			this.tenantId = tenantId;
+			this.aoId = aoId;
+			commitId = 0;
+			dateCreate = new Date();
 			dateUpdate = dateCreate;
-			//Just put date rep some number less than create..
-			dateRep = new Date(dateCreate.getTime()-TimeUnit.DAYS.toMillis(30));
+			// Just put date rep some number less than create..
+			dateCommit = new Date(dateCreate.getTime() - TimeUnit.DAYS.toMillis(30));
 			dateChange = dateCreate;
-			//Create scache before you insert..
+			// Create scache before you insert..
 			getProvider(false);
 			insert();
 		}
 		
 		
+
 		public void serialize(Encoder encoder) throws IOException {
 			encoder.writeString("id", id);
 			encoder.writeString("tschema", schemaName);
 			encoder.writeInt("tenant_id", tenantId);
 			encoder.writeInt("ao_id", aoId);
-			encoder.writeProperties("rep_info", repInfo);
-			encoder.writeDate("rep_date", dateRep);
+			encoder.writeString("commit_dir", commitDir);
+			encoder.writeStringArray("ext_keep", aExtension);
+			encoder.writeInt("commit_id", commitId);
+			encoder.writeDate("commit_date", dateCommit);
 			encoder.writeDate("change_date", dateChange);
 			encoder.writeDate("create_date", dateCreate);
 			encoder.writeDate("last_update", dateUpdate);
@@ -202,22 +341,24 @@ public class SolderVaultFactory implements IVaultFactory{
 			schemaName = decoder.readString("tschema");
 			tenantId = decoder.readInt("tenant_id");
 			aoId = decoder.readInt("ao_id");
-			repInfo = decoder.readProperties("rep_info");
-			
-			dateRep = decoder.readDate("rep_date");
+			commitDir = decoder.readString("commit_dir");
+			aExtension = decoder.readStringArray("ext_keep");
+			commitId = decoder.readInt("commit_id");
+			dateCommit = decoder.readDate("commit_date");
 			dateChange = decoder.readDate("change_date");
 			dateCreate = decoder.readDate("create_date");
 			dateUpdate = decoder.readDate("last_update");
 		}
-		
+
 		public String[] cacheKeys() {
-			return new String[] { CacheHelper.getKey(CacheHelper.KEY_ID, id), CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME,tenantId,schemaName,String.valueOf(aoId)) };
+			return new String[] { CacheHelper.getKey(CacheHelper.KEY_ID, id),
+					CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME, tenantId, schemaName, String.valueOf(aoId)) };
 		}
 
 		public String getId() {
 			return id;
 		}
-		
+
 		public String getName() {
 			return getId();
 		}
@@ -233,13 +374,21 @@ public class SolderVaultFactory implements IVaultFactory{
 		public int getAoId() {
 			return aoId;
 		}
-
-		public Map<String, String> getRepInfo() {
-			return repInfo;
+		
+		public String getCommitDir() {
+			return commitDir;
+		}
+		
+		public String[] getExtensionToKeep() {
+			return aExtension;
 		}
 
-		public Date getRepDate() {
-			return dateRep;
+		public int getCommitId() {
+			return commitId;
+		}
+
+		public Date getCommitDate() {
+			return dateCommit;
 		}
 
 		public Date getChangeDate() {
@@ -253,153 +402,180 @@ public class SolderVaultFactory implements IVaultFactory{
 		public Date getLastDate() {
 			return dateUpdate;
 		}
-		
-		
-		//For now copy everything so we get testing..
-		//We can optimize by not copying when the file is locally available..
-		
+
+		// For now copy everything so we get testing..
+		// We can optimize by not copying when the file is locally available..
+
 		public IVaultProvider getProvider(boolean fReadOnly) throws IOException {
-				//Pick a Cache Directory...
-				SyncCache syncCache = SyncCache.get(SyncCache.DEFAULT);
-				File fileProv = syncCache.ensureSyncFolder(id);
-				return new FileVaultProvider(fileProv.getAbsolutePath(),fReadOnly); 
+			// Pick a Cache Directory...
+			SyncLocalRepo syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
+			File fileProv = syncCache.ensureSyncFolder(id);
+			return new FileVaultProvider(fileProv.getAbsolutePath(), fReadOnly);
 		}
-	
-		
+
 		void insert() throws IOException {
 			// We get the transactions sqlTm.
-			
-			SQLTm.get().executeOne(vaultQ.qVaultIns, this::serialize, null);
+
+			SQLTm.get().executeOne(reqQ.qRepoIns, this::serialize, null);
 
 			// Add to the cache
-			cacheSVault.store(this, this::cacheKeys);
-			Audit.audit(SAudit.SVault_Create,aoId,-1,tenantId, (cmb)->{
+			cacheRepo.store(this, this::cacheKeys);
+			Audit.audit(SAudit.SRepo_Create, aoId, -1, tenantId, (cmb) -> {
 				cmb.put("id", id);
 				cmb.put("schema", schemaName);
 			});
 		}
-		
+
 		public void updateChange(Date dateChange) throws IOException {
-			
-			
-			
+
 			Date dateChangeFinal = Objects.requireNonNull(dateChange);
 			Date dateUpdateNew = new Date();
 
-			int i=SQLTm.get().executeOne(vaultQ.qVaultUpdChange,(encoder)->{
-				
+			int i = SQLTm.get().executeOne(reqQ.qRepoUpdChange, (encoder) -> {
+
 				encoder.writeDate("change_date", dateChange);
 				encoder.writeDate("last_update", dateUpdateNew);
-				
-				//Where clause come
+
+				// Where clause come
 				encoder.writeString("id", id);
-				
-			},null);
+
+			}, null);
 			if (i == 1) {
-				this.dateChange=dateChangeFinal;
-				this.dateUpdate=dateUpdateNew;
-				
-				Audit.audit(SAudit.SVault_Update, aoId, -1, tenantId, (cmb) -> {
+				this.dateChange = dateChangeFinal;
+				this.dateUpdate = dateUpdateNew;
+
+				Audit.audit(SAudit.SRepo_Update, aoId, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("op", "change_date");
-					cmb.putIfChanged("change_date", dateChangeFinal,dateChange);
+					cmb.putIfChanged("change_date", dateChangeFinal, dateChange);
 				});
-				
+
 			} else {
-				Event.log(SEvent.DbUpdateFail, -1, -1, (mb) -> {
-					mb.put("table", "svault");
+				Event.log(SEvent.DbUpdateFail, aoId, tenantId, (mb) -> {
+					mb.put("table", "srepo");
 					mb.put("id", id);
 				});
 			}
-			
+
 		}
-		
-		public void updateRep(Map<String,String> repInfoNew,Date dateRepNew) throws IOException {
-			
-			Date dateRepNewFinal = Objects.requireNonNull(dateRepNew);
-			Map<String, String> repInfo2 = repInfo;
-			
-			if (repInfoNew != null) {
-				repInfo2 = new LinkedHashMap<>();
-				repInfo2.putAll(repInfoNew);
+
+		public void updateCommit(SCommit commit) throws IOException {
+
+			Objects.requireNonNull(commit);
+			int commitIdNew = commit.getId();
+			Date dateCommitNew = commit.getCreateDate();
+			if (commitIdNew <= this.commitId) {
+				throw new SolderException("Commit id sequencing error; new commit " + commitIdNew
+						+ " must be newer than current commit " + commitId);
 			}
-			Map<String, String> repInfoNewFinal = repInfo2;
-			
-			
+
 			Date dateUpdateNew = new Date();
 
-			int i=SQLTm.get().executeOne(vaultQ.qVaultUpdRep,(encoder)->{
-				encoder.writeProperties("rep_info", repInfoNewFinal);
-				encoder.writeDate("rep_date", dateRepNewFinal);
+			int i = SQLTm.get().executeOne(reqQ.qRepoUpdCommit, (encoder) -> {
+				encoder.writeInt("commit_id", commitIdNew);
+				encoder.writeDate("commit_date", dateCommitNew);
 				encoder.writeDate("last_update", dateUpdateNew);
-				
-				//Where clause come
+
+				// Where clause come
 				encoder.writeString("id", id);
-				
-			},null);
+			}, null);
 			if (i == 1) {
-				Audit.audit(SAudit.SVault_Update, aoId, -1, tenantId, (cmb) -> {
+				Audit.audit(SAudit.SRepo_Update, aoId, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("op", "rep_info");
-					cmb.putIfChanged("rep_date", dateRepNewFinal,dateRep);
-					cmb.putIfChanged("props", repInfoNewFinal, repInfo);
+					cmb.putIfChanged("commit_id", commitIdNew, commitId);
+					cmb.putIfChanged("commit_date", dateCommitNew, dateCommit);
+
 				});
-				
-				this.repInfo=repInfoNew;
-				this.dateRep=dateRepNewFinal;
-				this.dateUpdate=dateUpdateNew;
-				
+				this.commitId = commitIdNew;
+				this.dateCommit = dateCommitNew;
+				this.dateUpdate = dateUpdateNew;
+
 			} else {
-				Event.log(SEvent.DbUpdateFail, -1, -1, (mb) -> {
-					mb.put("table", "svault");
+				Event.log(SEvent.DbUpdateFail, aoId, tenantId, (mb) -> {
+					mb.put("table", "srepo");
 					mb.put("id", id);
+					mb.put("commit_id", commitIdNew);
 				});
 			}
-			
+
 		}
-		
-		
+
 		public void delete() throws IOException {
-			int i = SQLTm.get().executeOne(vaultQ.qVaultDelOne, (encoder) -> {
+			int i = SQLTm.get().executeOne(reqQ.qRepoDelOne, (encoder) -> {
 				encoder.writeString("id", id);
 			}, null);
 
 			if (i < 1) {
-				Event.log(EEvent.DbDeleteFail, -1, -1, (mb) -> {
-					mb.put("table", "svault");
+				Event.log(EEvent.DbDeleteFail, aoId, tenantId, (mb) -> {
+					mb.put("table", "srepo`");
 					mb.put("id", id);
 				});
 			} else {
-				Audit.audit(SAudit.SVault_Delete, aoId, -1, tenantId, (cmb) -> {
+				Audit.audit(SAudit.SRepo_Delete, aoId, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("schema", schemaName);
 				});
 			}
 
 		}
+
+		public void repInit() throws IOException {
+			Event.log(SEvent.SRepClone, aoId, tenantId, (mb) -> {
+				mb.put("table", "srepo");
+				mb.put("id", id);
+			});
+
+			SyncLocalRepo syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
+			File fileLocalRepo = syncCache.ensureSyncFolder(id);
+			try {
+				SolderRepoOps.repInit(this, fileLocalRepo);
+			} catch (Exception e) {
+				Event.log(SEvent.SRepError, aoId, tenantId, (mb) -> {
+					mb.put("table", "srepo`");
+					mb.put("id", id);
+					mb.put("error", PrintUtils.getStackTrace(e));
+				});
+				throw SolderException.rethrow(e);
+			}
+		}
 	}
-	
-	public static SVault getById(String id) {
-		id = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
-		// We cache all Objects refresh it periodically.
-		return cacheSVault.get(CacheHelper.getKey(CacheHelper.KEY_ID, id));
+
+	public static SRepo getById(String id) throws IOException {
+		String idFinal = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+
+		String key = CacheHelper.getKey(CacheHelper.KEY_ID, idFinal);
+		return cacheRepo.getStoreIfAbsent(key, () -> selectById(idFinal), (srepo) -> srepo.cacheKeys());
+
 	}
-	
-	public static List<SVault> getAll() {
-		return cacheSVault.getAll();
+
+	static SRepo selectById(String id) throws IOException {
+		TReference<SRepo> tref = new TReference<>();
+		SQLTm.get().select(reqQ.qRepoSelId, (encoder) -> {
+			encoder.writeString("id", id);
+		}, (decoder) -> {
+			if (decoder.next()) {
+				SRepo srepo = new SRepo();
+				srepo.deserialize(decoder);
+				tref.set(srepo);
+			}
+		}, null);
+		return tref.get();
 	}
-	
-	static List<SVault> selectAll() throws IOException {
-		List<SVault> list = new ArrayList<>();
-		SQLTm.get().select(vaultQ.qVaultSelAll, null, (decoder) -> {
+
+	public static List<SRepo> selectBySchema(String schemaName) throws IOException {
+		String schemaNameFinal = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+		List<SRepo> list = new ArrayList<>();
+		SQLTm.get().select(reqQ.qRepoSelSchema, (encoder) -> {
+			encoder.writeString("tschema", schemaNameFinal);
+		}, (decoder) -> {
 			while (decoder.next()) {
-				SVault svault = new SVault();
-				svault.deserialize(decoder);
-				list.add(svault);
+				SRepo srepo = new SRepo();
+				srepo.deserialize(decoder);
+				list.add(srepo);
 			}
 		}, null);
 		return list;
 	}
 
 }
-

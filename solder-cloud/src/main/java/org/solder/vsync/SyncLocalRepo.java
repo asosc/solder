@@ -14,10 +14,10 @@ import com.lnk.lucene.LuceneUtilException;
 import com.lnk.lucene.NamedSPI;
 import com.lnk.lucene.TempFiles;
 
-public class SyncCache {
+public class SyncLocalRepo {
 
 
-	private static Log LOG = LogFactory.getLog(SyncCache.class.getName());
+	private static Log LOG = LogFactory.getLog(SyncLocalRepo.class.getName());
 	
 	
 	//NO LifeCycle management .. We want apps to do this anyway.
@@ -27,7 +27,7 @@ public class SyncCache {
 	
 	
 	
-	private static final NamedSPI<SyncCache> REGISTERED = new NamedSPI<SyncCache>(true);
+	private static final NamedSPI<SyncLocalRepo> REGISTERED = new NamedSPI<SyncLocalRepo>(true);
 	
 	
 	public static synchronized void initDefault() throws IOException {
@@ -39,10 +39,10 @@ public class SyncCache {
 				stSyncRoot = "";
 			}
 	
-			File fileSyncCache = new File(stSyncRoot, "syncCache");
+			File fileSyncCache = new File(stSyncRoot, "syncLocalRepo");
 			ensure(TempFiles.DEFAULT,()->{
 				try {
-					return new SyncCache(SyncCache.DEFAULT, fileSyncCache);
+					return new SyncLocalRepo(SyncLocalRepo.DEFAULT, fileSyncCache);
 				}catch(IOException e) {
 					throw LuceneUtilException.rethrowUnchecked(e);
 				}
@@ -50,12 +50,12 @@ public class SyncCache {
 		}
 	}
 
-	public static SyncCache get(String name) {
+	public static SyncLocalRepo get(String name) {
 		return REGISTERED.lookup(name);
 	}
 	
 	
-	public static SyncCache ensure(String name,Supplier<SyncCache> fn) {
+	public static SyncLocalRepo ensure(String name,Supplier<SyncLocalRepo> fn) {
 		return REGISTERED.ensure(name, fn);
 	}
 	
@@ -66,7 +66,7 @@ public class SyncCache {
 	
 	
 	
-	public SyncCache(String name,File fileRoot) throws IOException {
+	public SyncLocalRepo(String name,File fileRoot) throws IOException {
 		if (REGISTERED.availableServices().contains(name)) {
 			throw new RuntimeException("TempFiles "+name+" already registered!");
 		}

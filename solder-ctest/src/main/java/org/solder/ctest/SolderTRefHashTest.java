@@ -12,12 +12,11 @@ import org.apache.commons.logging.LogFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SVault;
+import org.solder.vsync.SolderVaultFactory.SRepo;
 
 import com.aura.crypto.CryptoScheme;
 import com.beech.store.TVault;
 import com.beech.testing.TRefHashTest;
-import com.beech.testing.TSMapTest;
 import com.ee.session.db.Tenant;
 import com.lnk.jdbc.MSSQLUtil;
 import com.lnk.jdbc.SQLQuery;
@@ -64,7 +63,7 @@ public class SolderTRefHashTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SVault svault = new SVault(id, "river_trefhash", idTenant, random.nextInt());
+			SRepo svault = new SRepo(id, "river_trefhash", idTenant, random.nextInt(),"Commits",new String[] {"bee"});
 
 			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
 

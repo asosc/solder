@@ -11,7 +11,7 @@ import org.apache.commons.logging.LogFactory;
 import org.nimbo.azure.AzureBlobProvider;
 import org.nimbo.blobs.ContainerGroup;
 import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SyncCache;
+import org.solder.vsync.SyncLocalRepo;
 
 import com.ee.session.db.BackgroundTask;
 import com.ee.session.db.EESessionProvider;
@@ -26,7 +26,7 @@ public class SolderMain {
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
 	static final int CACHE_REFRESH_SECONDS = (int) TimeUnit.MINUTES.toSeconds(10);
 	
-	
+	static String SOLDER_CONTAINER_GROUP = "solder_cg";
 	
 	public static void init() throws IOException {
 		
@@ -41,7 +41,7 @@ public class SolderMain {
 			AzureBlobProvider.init();
 			new SolderVaultFactory();
 			SolderVaultFactory.init(dbFinal);
-			SyncCache.initDefault();
+			SyncLocalRepo.initDefault();
 			
 			// Load everything once...
 			syncObjects();
@@ -58,9 +58,24 @@ public class SolderMain {
 		});
 	}
 	
+	public static String getSolderContainerGroupName() {
+		return SOLDER_CONTAINER_GROUP;
+	}
+	
+	public static void setSolderContainerGroup(ContainerGroup cg) throws IOException{
+		Objects.requireNonNull(cg,"container group");
+		String prev = SOLDER_CONTAINER_GROUP;
+		LOG.info(String.format("Setting Solder Container Group as %s (prev=%s)", cg.getName(),prev));
+		SOLDER_CONTAINER_GROUP = cg.getName();
+		
+		Event.log(SEvent.SolderSetContinerGroup, -1, -1, (mb) -> {
+			mb.put("cg", cg.getName());
+			mb.put("cg.prev", prev);
+		});
+	}
 	
 	static void syncObjects() throws IOException {
-		SolderVaultFactory.syncObjects();
+		//We removed what we had..
 		
 		
 	}

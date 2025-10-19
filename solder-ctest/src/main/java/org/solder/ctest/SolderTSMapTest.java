@@ -14,7 +14,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SVault;
+import org.solder.vsync.SolderVaultFactory.SRepo;
 
 import com.aura.crypto.CryptoScheme;
 import com.beech.store.TVault;
@@ -66,7 +66,7 @@ public class SolderTSMapTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SVault svault = new SVault(id, "river_tsmap", idTenant, random.nextInt());
+			SRepo svault = new SRepo(id, "river_tsmap", idTenant, random.nextInt(),"Commits",new String[] {"bee"});
 
 			TSMapTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
 

@@ -10,7 +10,9 @@ public enum SEvent implements EventDefinition  {
 	
 	
 	SolderMain_Init(201,Priority.MEDIUM),DbUpdateFail(202,Priority.MED_HIGH),
-	DbDeleteFail(203,Priority.MED_HIGH);
+	DbDeleteFail(203,Priority.MED_HIGH),SolderSetContinerGroup(204,Priority.MEDIUM),
+	SCommitCreate(205,Priority.LOW),SCommitUpdate(206,Priority.MEDIUM),SCommitDelete(207,Priority.HIGH),
+	SRepClone(208,Priority.LOW),SRepError(209,Priority.HIGH);
 	
 	//More to come as we 
 	
