@@ -18,6 +18,7 @@ import org.nimbo.blobs.BlobFS;
 import org.solder.core.SAudit;
 import org.solder.core.SEvent;
 import org.solder.core.SolderException;
+import org.solder.vsync.SolderRepoOps.SLocalRepo;
 
 import com.beech.store.FileVaultProvider;
 import com.beech.store.IVaultFactory;
@@ -51,7 +52,9 @@ public class SolderVaultFactory implements IVaultFactory {
 
 	public static final String TYPE = "solder_repo";
 
+	Map<String,SolderVaultProvider> mapProv = new LinkedHashMap<>();
 	public SolderVaultFactory() {
+		mapProv = new LinkedHashMap<>();
 		TVault.registerFactory(this);
 	}
 
@@ -59,11 +62,97 @@ public class SolderVaultFactory implements IVaultFactory {
 		return TYPE;
 	}
 
-	public IVaultProvider getProvider(String stFactoryParams, boolean fReadOnly) throws IOException {
+	public synchronized IVaultProvider getProvider(String stFactoryParams, boolean fReadOnly) throws IOException {
 		String id = stFactoryParams;
+		SolderVaultProvider prov = mapProv.get(id);
+		if (prov != null) {
+			return prov;
+		}
+		
 		SRepo srepo = getRepoById(id);
 		Objects.requireNonNull(srepo, "srepo " + id);
-		return srepo.getProvider(fReadOnly);
+		prov = new SolderVaultProvider(srepo,false);
+		mapProv.put(id, prov);
+		return prov;
+	}
+	
+	public void repoGitPush(String stFactoryParams) throws IOException {
+		SolderVaultProvider prov = (SolderVaultProvider)getProvider(stFactoryParams,false);
+		prov.repoGitPush();
+	}
+	
+	
+	static class SolderVaultProvider implements IVaultProvider {
+		
+		
+		SyncLocalRepo syncCache;
+		File fileProv;
+		SLocalRepo lrepo;
+		FileVaultProvider fvp;
+		SRepo repo;
+		
+		SolderVaultProvider(SRepo repo,boolean fReadOnly) throws IOException{
+			this.repo=repo;
+			syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
+			fileProv = syncCache.ensureSyncFolder(repo.getId());
+			//Solder Sync On...
+			lrepo = new SLocalRepo(repo, fileProv,true);
+			//We want to make sure the lrepo has 
+			if (repo.commitId>0 && lrepo.commitId != repo.commitId ) {
+				//Need to Sync...
+				SolderRepoOps.repoCheckout(lrepo);
+			}
+			fvp = new FileVaultProvider(fileProv.getAbsolutePath(), fReadOnly);
+		}
+		
+		public void repoGitPush() throws IOException{
+			SolderRepoOps.repCommit(repo, fileProv, (props)->{
+				props.put("message","SolderVaultProvider");
+			});
+		}
+		
+		
+		public String getName() {
+			return repo.getId();
+		}
+		
+		public String getFactoryParam() {
+			return repo.getId();
+		}
+		
+		public String getType() {
+			return TYPE;
+		}
+		
+		public String[] getRoots() throws IOException {
+			return fvp.getRoots();
+		}
+		
+		public void ensureRoot(String name) throws IOException {
+			fvp.ensureRoot(name);
+		}
+		
+		
+		public boolean isReadOnly() {
+			return false;
+		}
+		
+		
+		
+		//All files will start with one of the /rootName/...
+		public File getExistingFile(String path,boolean fThrow) throws IOException {
+			return fvp.getExistingFile(path, fThrow);
+		}
+		
+		//Will throw if there is an existing file.. (Apps can use getExistingFile and deleteFile if it needs to clean up)
+		public File getNewFile(String path) throws IOException {
+			return fvp.getNewFile(path);
+		}
+		
+		public boolean deleteFile(String path) throws IOException {
+			return fvp.deleteFile(path);
+		}
+		
 	}
 
 	static final String SREPO_TABLE = "srepo";
@@ -124,6 +213,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			tsCommit = new SQLTableSchema(SCOMMIT_TABLE);
 			tsCommit.parseAndAdd(new String[] { "id,int,1", "repo_id,string(48),1", "chash,string(128),1",
+					"prev_id,int,1","prev_chash,string(128),1",
 					"tenant_id,int,1", "blob_fsid,long,1", "create_date,date,1", "info,string,0,3" });
 
 			stPrimaryKey = "id";
@@ -151,9 +241,9 @@ public class SolderVaultFactory implements IVaultFactory {
 	}
 
 	public static class SCommit implements Comparable<SCommit> {
-		int id;
+		int id,idPrev;
 
-		String chash, repoId;
+		String chash, repoId,chashPrev;
 		long blobFsId;
 		int tenantId;
 		Date dateCreate;
@@ -170,9 +260,16 @@ public class SolderVaultFactory implements IVaultFactory {
 			this.id = commitId;
 			Objects.requireNonNull(repo, "repo");
 			this.repoId = repo.getId();
-
 			this.chash = Validator.require(chash, "chash", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 			this.tenantId = repo.getTenantId();
+			
+			if (repo.getCommitId()<=0) {
+				idPrev=0;
+				chashPrev = "cafe00";
+			} else {
+				idPrev = repo.getCommitId();
+				chashPrev = repo.getLatestCommit().getCHash();
+			}
 
 			dateCreate = new Date();
 			if (mapInfo == null) {
@@ -193,11 +290,15 @@ public class SolderVaultFactory implements IVaultFactory {
 				return false;
 			}
 		}
+		
+		
 
 		public void serialize(Encoder encoder) throws IOException {
 			encoder.writeInt("id", id);
 			encoder.writeString("repo_id", repoId);
 			encoder.writeString("chash", chash);
+			encoder.writeInt("prev_id", idPrev);
+			encoder.writeString("prev_chash", chashPrev);
 			encoder.writeInt("tenant_id", tenantId);
 			encoder.writeLong("blob_fsid", blobFsId);
 			encoder.writeDate("create_date", dateCreate);
@@ -209,6 +310,8 @@ public class SolderVaultFactory implements IVaultFactory {
 			id = decoder.readInt("id");
 			repoId = decoder.readString("repo_id");
 			chash = decoder.readString("chash");
+			idPrev = decoder.readInt("prev_id");
+			chashPrev = decoder.readString("prev_chash");
 			tenantId = decoder.readInt("tenant_id");
 			blobFsId=decoder.readLong("blob_fsid");
 			dateCreate = decoder.readDate("create_date");
@@ -225,6 +328,14 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		public String getCHash() {
 			return chash;
+		}
+		
+		public int getPrevId() {
+			return idPrev;
+		}
+		
+		public String getPrevCHash() {
+			return chashPrev;
 		}
 
 		public int getTenantId() {
@@ -316,6 +427,11 @@ public class SolderVaultFactory implements IVaultFactory {
 			}
 		}, null);
 		return list;
+	}
+	
+	
+	public static SRepo createBeechSRepo(String id, String schemaName, int tenantId, int aoId) throws IOException {
+		return new SRepo(id, schemaName, tenantId, aoId,"Commits",new String[] {"bee"});
 	}
 
 	public static class SRepo {
@@ -440,14 +556,27 @@ public class SolderVaultFactory implements IVaultFactory {
 		public Date getLastDate() {
 			return dateUpdate;
 		}
+		
+		
+		SyncLocalRepo syncCache = null;
 
 		// For now copy everything so we get testing..
 		// We can optimize by not copying when the file is locally available..
 
-		public IVaultProvider getProvider(boolean fReadOnly) throws IOException {
+		public synchronized IVaultProvider getProvider(boolean fReadOnly) throws IOException {
 			// Pick a Cache Directory...
+			
 			SyncLocalRepo syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
 			File fileProv = syncCache.ensureSyncFolder(id);
+			
+			//Solder Sync On...
+			SLocalRepo lrepo = new SLocalRepo(this, fileProv,true);
+			//We want to make sure the lrepo has 
+			if (commitId>0 && lrepo.commitId != this.commitId ) {
+				//Need to Sync...
+				SolderRepoOps.repoCheckout(lrepo);
+			}
+			
 			return new FileVaultProvider(fileProv.getAbsolutePath(), fReadOnly);
 		}
 
@@ -500,6 +629,11 @@ public class SolderVaultFactory implements IVaultFactory {
 		public void updateCommit(SCommit commit) throws IOException {
 
 			Objects.requireNonNull(commit);
+			
+			if (this.commitId>0 && commitId != commit.getPrevId()) {
+				throw new SolderException("CommitId mismatch; current="+commitId+"; given SCommit prev="+commit.getPrevId());
+			}
+			
 			int commitIdNew = commit.getId();
 			Date dateCommitNew = commit.getCreateDate();
 			if (commitIdNew <= this.commitId) {
@@ -559,7 +693,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		}
 
 		public void repInit() throws IOException {
-			Event.log(SEvent.SRepClone, aoId, tenantId, (mb) -> {
+			Event.log(SEvent.SRepoSync, aoId, tenantId, (mb) -> {
 				mb.put("table", "srepo");
 				mb.put("id", id);
 			});
@@ -569,7 +703,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			try {
 				SolderRepoOps.repInit(this, fileLocalRepo);
 			} catch (Exception e) {
-				Event.log(SEvent.SRepError, aoId, tenantId, (mb) -> {
+				Event.log(SEvent.SRepoSyncError, aoId, tenantId, (mb) -> {
 					mb.put("table", "srepo`");
 					mb.put("id", id);
 					mb.put("error", PrintUtils.getStackTrace(e));

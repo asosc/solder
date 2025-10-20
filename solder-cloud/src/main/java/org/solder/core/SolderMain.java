@@ -26,7 +26,7 @@ public class SolderMain {
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
 	static final int CACHE_REFRESH_SECONDS = (int) TimeUnit.MINUTES.toSeconds(10);
 	
-	static String SOLDER_CONTAINER_GROUP = "solder_cg";
+	static String SOLDER_CONTAINER_GROUP = "drink";
 	
 	public static void init() throws IOException {
 		

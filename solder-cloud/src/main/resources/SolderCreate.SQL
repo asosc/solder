@@ -21,6 +21,8 @@ CREATE TABLE scommit (
 	id int NOT NULL,
 	repo_id nvarchar(48) NOT NULL,
 	chash nvarchar(128) NOT NULL,
+	prev_id int NOT NULL,
+	prev_chash nvarchar(128) NOT NULL,
 	tenant_id int NOT NULL,
 	blob_fsid bigint NOT NULL,
 	create_date datetime NOT NULL,

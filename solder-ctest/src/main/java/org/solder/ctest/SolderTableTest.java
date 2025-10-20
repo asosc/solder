@@ -35,6 +35,8 @@ public class SolderTableTest {
 	static File fileRoot = null;
 	
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
+	
+	static String repoId=null;
 
 	static synchronized void init() throws IOException {
 		if (!s_fInit.get()) {
@@ -59,7 +61,7 @@ public class SolderTableTest {
 			SQLQuery.printAll(fileQuery);
 
 			CryptoScheme scheme = CryptoScheme.getDefault();
-			String id = scheme.getUUID();
+			repoId = scheme.getUUID();
 
 			List<Tenant> list = Tenant.getAll();
 			int idTenant = Tenant.ROOT_ID;
@@ -67,9 +69,9 @@ public class SolderTableTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SRepo svault = new SRepo(id, "river", idTenant, random.nextInt(),"Commits",new String[] {"bee"});
+			SRepo srepo = SolderVaultFactory.createBeechSRepo(repoId, "river", idTenant, random.nextInt());
 
-			TableTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
+			TableTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));
 
 		}
 	}
@@ -91,22 +93,30 @@ public class SolderTableTest {
 	@Test
 	public void test_001_OneRiver() throws Exception {
 		tt.test_001_OneRiver();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 
 	@Test
 	public void test_002_OneRiverNoIndex() throws Exception {
 		tt.test_002_OneRiverNoIndex();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 
 	@Test
 	public void test_003_QuickRiverPair() throws Exception {
 		tt.test_003_QuickRiverPair();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 
 	}
 
 	//@Test
 	public void test_04_LargeRiverTest() throws Exception {
 		tt.test_04_LargeRiverTest();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 	
 }

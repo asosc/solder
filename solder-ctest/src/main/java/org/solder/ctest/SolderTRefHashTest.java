@@ -30,6 +30,8 @@ public class SolderTRefHashTest {
 	static LBytesRefHash s_refHashRivers = null;
 	static File fileRoot = null;
 	
+	static String repoId=null;
+	
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
 
 	public static synchronized void init() throws IOException {
@@ -55,17 +57,17 @@ public class SolderTRefHashTest {
 			SQLQuery.printAll(fileQuery);
 
 			CryptoScheme scheme = CryptoScheme.getDefault();
-			String id = scheme.getUUID();
+			repoId = scheme.getUUID();
 
 			List<Tenant> list = Tenant.getAll();
 			int idTenant = Tenant.ROOT_ID;
 			if (list.size() > 0) {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
+			SRepo srepo = SolderVaultFactory.createBeechSRepo(repoId, "river_refhash", idTenant, random.nextInt());
+			
 
-			SRepo svault = new SRepo(id, "river_trefhash", idTenant, random.nextInt(),"Commits",new String[] {"bee"});
-
-			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
+			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));
 
 		}
 	}
@@ -87,6 +89,8 @@ public class SolderTRefHashTest {
 	public void test_001_StandAlone() throws Exception {
 		init();
 		trefhasTest.test_001_StandAlone();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 
 }

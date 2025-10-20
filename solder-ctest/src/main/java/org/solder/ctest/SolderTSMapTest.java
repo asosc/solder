@@ -32,7 +32,7 @@ public class SolderTSMapTest {
 	static Random random = new Random();
 	static LBytesRefHash s_refHashRivers = null;
 	static File fileRoot = null;
-	
+	static String repoId=null;
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
 
 	static synchronized void init() throws IOException {
@@ -58,17 +58,17 @@ public class SolderTSMapTest {
 			SQLQuery.printAll(fileQuery);
 
 			CryptoScheme scheme = CryptoScheme.getDefault();
-			String id = scheme.getUUID();
+			repoId = scheme.getUUID();
 
 			List<Tenant> list = Tenant.getAll();
 			int idTenant = Tenant.ROOT_ID;
 			if (list.size() > 0) {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
+			SRepo srepo = SolderVaultFactory.createBeechSRepo(repoId, "river_tsmap", idTenant, random.nextInt());
+			
 
-			SRepo svault = new SRepo(id, "river_tsmap", idTenant, random.nextInt(),"Commits",new String[] {"bee"});
-
-			TSMapTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, id, mode));
+			TSMapTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));
 
 		}
 	}
@@ -92,21 +92,29 @@ public class SolderTSMapTest {
 	@Test
 	public void test_001_OneRiver() throws Exception {
 		tsmapTest.test_001_OneRiver();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 
 	@Test
 	public void test_002_OneRiverNoIndex() throws Exception {
 		tsmapTest.test_002_OneRiverNoIndex();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 
 	@Test
 	public void test_003_QuickRiverPair() throws Exception {
 		tsmapTest.test_003_QuickRiverPair();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 	
 	//@Test
 	public void test_004_LargeTest() throws Exception {
 		tsmapTest.test_004_LargeTest();
+		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+		svf.repoGitPush(repoId);
 	}
 	
 }
