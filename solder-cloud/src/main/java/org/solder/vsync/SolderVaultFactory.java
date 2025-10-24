@@ -174,7 +174,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		SQLTableSchema tsRepo, tsCommit;
 
-		SQLQuery qRepoIns, qRepoSelId, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne;
+		SQLQuery qRepoIns, qRepoSelId,qRepoSelUnique, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne;
 
 		SQLQuery qCommitIns, qCommitSelId, qCommitSelRepo, qCommitDelOne, qCommitSeq;
 
@@ -201,13 +201,14 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			qRepoIns = DriverUtil.createInsertQuery(dbName, dbType, tsRepo);
 			qRepoSelId = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "id", "ById");
+			qRepoSelUnique = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tschema,tenant_id,ao_id", "ByUnique");
 			qRepoSelSchema = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tschema", "BySchema");
 			qRepoUpdCommit = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "commit_id,commit_date,last_update",
-					"id", "Commit");
+					"id,commit_id", "Commit");
 			qRepoUpdChange = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "change_date,last_update", "id",
 					"Change");
 			qRepoDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsRepo, "id", "One");
-			SQLQuery.addToMap(qRepoIns, qRepoSelId, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne);
+			SQLQuery.addToMap(qRepoIns, qRepoSelId,qRepoSelUnique, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne);
 
 			cacheRepo = BackgroundTask.get().createCache(SREPO_TABLE, true);
 
@@ -508,6 +509,13 @@ public class SolderVaultFactory implements IVaultFactory {
 			return new String[] { CacheHelper.getKey(CacheHelper.KEY_ID, id),
 					CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME, tenantId, schemaName, String.valueOf(aoId)) };
 		}
+		
+		public void refresh() throws IOException {
+			SRepo srepo = selectRepoById(id, this);
+			if (srepo != this) {
+				throw new IOException("Unable to refresh lock id=" + id);
+			}
+		}
 
 		public String getId() {
 			return id;
@@ -650,6 +658,8 @@ public class SolderVaultFactory implements IVaultFactory {
 
 				// Where clause come
 				encoder.writeString("id", id);
+				encoder.writeInt("commit_id", commitId);
+				
 			}, null);
 			if (i == 1) {
 				Audit.audit(SAudit.SRepo_Update, aoId, -1, tenantId, (cmb) -> {
@@ -742,17 +752,43 @@ public class SolderVaultFactory implements IVaultFactory {
 		String idFinal = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 
 		String key = CacheHelper.getKey(CacheHelper.KEY_ID, idFinal);
-		return cacheRepo.getStoreIfAbsent(key, () -> selectRepoById(idFinal), (srepo) -> srepo.cacheKeys());
+		return cacheRepo.getStoreIfAbsent(key, () -> selectRepoById(idFinal,null), (srepo) -> srepo.cacheKeys());
+
+	}
+	
+	
+	public static SRepo getRepoByUnique(String schemaName,int tenantId,int aoId) throws IOException {
+		String schemaNameFinal = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+
+		String key = CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME, tenantId, schemaName,String.valueOf(aoId));
+		return cacheRepo.getStoreIfAbsent(key, () -> selectByUnique(schemaNameFinal,tenantId,aoId), (srepo) -> srepo.cacheKeys());
 
 	}
 
-	static SRepo selectRepoById(String id) throws IOException {
+	static SRepo selectRepoById(String id,SRepo srepo) throws IOException {
 		TReference<SRepo> tref = new TReference<>();
+		SRepo srepoFinal = srepo != null ? srepo : new SRepo();
 		SQLTm.get().select(reqQ.qRepoSelId, (encoder) -> {
 			encoder.writeString("id", id);
 		}, (decoder) -> {
 			if (decoder.next()) {
-				SRepo srepo = new SRepo();
+				srepoFinal.deserialize(decoder);
+				tref.set(srepoFinal);
+			}
+		}, null);
+		return tref.get();
+	}
+	
+	static SRepo selectByUnique(String schemaName,int tenantId,int aoId) throws IOException {
+		TReference<SRepo> tref = new TReference<>();
+		
+		SQLTm.get().select(reqQ.qRepoSelUnique, (encoder) -> {
+			encoder.writeString("tschema", schemaName);
+			encoder.writeInt("tenant_id", tenantId);
+			encoder.writeInt("ao_id", aoId);
+		}, (decoder) -> {
+			SRepo srepo = new SRepo();
+			if (decoder.next()) {
 				srepo.deserialize(decoder);
 				tref.set(srepo);
 			}

@@ -521,6 +521,9 @@ public class SolderRepoOps {
 			SRepo srepo = lRepo.srepo;
 			Objects.requireNonNull(srepo,"srepo");
 			
+			//Refresh just before we commit.
+			srepo.refresh();
+			
 			int srepoCommitId = srepo.getCommitId();
 			
 			//Match ids first..
