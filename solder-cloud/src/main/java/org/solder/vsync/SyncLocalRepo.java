@@ -33,7 +33,7 @@ public class SyncLocalRepo {
 	public static synchronized void initDefault() throws IOException {
 		if (!REGISTERED.availableServices().contains(DEFAULT)) {
 			Map<String, String> mapEnv = System.getenv();
-			String stSyncRoot = mapEnv.get("SOLDER_INSTALL");
+			String stSyncRoot = mapEnv.get("ENIGMA_INSTALL");
 
 			if (stSyncRoot == null) {
 				stSyncRoot = "";

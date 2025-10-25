@@ -65,7 +65,7 @@ public class SolderTestCommon {
 			s_refHashRivers = getRiverNames();
 
 			Map<String, String> mapEnv = System.getenv();
-			String stLogRoot = mapEnv.get("SOLDER_INSTALL");
+			String stLogRoot = mapEnv.get("ENIGMA_INSTALL");
 
 			if (stLogRoot == null) {
 				stLogRoot = "";

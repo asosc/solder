@@ -101,6 +101,8 @@ public class SolderCLI  extends AbstractCLI {
 				"Git Checkout(same as clone,rebase). Params:EEDBCfgFile");
 		mapGitOpsHelp.put("push",
 				"Git Push(sam as commit and push). Params:EEDBCfgFile");
+		mapGitOpsHelp.put("init",
+				"Git init. Params:EEDBCfgFile repoId");
 	}
 	
 	

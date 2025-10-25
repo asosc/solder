@@ -69,7 +69,7 @@
 									<type>${project.packaging}</type>
 								</artifactItem>
 							</artifactItems>
-							<outputDirectory>${env.SOLDER_INSTALL}\lib</outputDirectory>
+							<outputDirectory>${env.ENIGMA_INSTALL}\lib</outputDirectory>
 
 						</configuration>
 					</execution>
