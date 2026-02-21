@@ -946,7 +946,7 @@ public class SolderRepoOps {
 
 			Validator.checkFile(fileRep, "path " + se.getRelPath());
 
-			BlobFS blob = new BlobFS(name, SolderVaultFactory.TYPE, srepo.getId(), commitInfo.commitId, mapInfo, null);
+			BlobFS blob = new BlobFS(name, SolderVaultFactory.TYPE, srepo.getId(), commitInfo.commitId, mapInfo, srepo.getTenantId(),-1);
 			BlobFileTransact bft = cg.beginFileTransact(blob);
 			boolean fError = true;
 			FileOutputStream fos = null;
@@ -987,7 +987,7 @@ public class SolderRepoOps {
 		mapInfo.put("pid", SessionManager.getPid());
 		String name = cs.getUUID();
 		BlobFS blobCommit = new BlobFS(name, BLOB_TYPE_SOLDER_COMMIT, srepo.getId(), commitInfo.commitId, mapInfo,
-				null);
+				srepo.getTenantId(),-1);
 		BlobFileTransact bft = cg.beginFileTransact(blobCommit);
 		boolean fError = true;
 		FileOutputStream fos = null;

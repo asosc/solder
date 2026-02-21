@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
@@ -95,22 +96,28 @@ public class SolderCLI  extends AbstractCLI {
 	static final String[] git_Ops = { "create","checkout","push"};
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
-		mapGitOpsHelp.put("create",
-				"Git create. Params:EEDBCfgFile fileLocalRepo repoId schemaName [tenant_id aoId]");
+		mapGitOpsHelp.put("create", 
+				"Git create. Params: fileLocalRepo repoId schemaName [tenant_id aoId]");
 		mapGitOpsHelp.put("checkout",
-				"Git Checkout(same as clone,rebase). Params:EEDBCfgFile");
+				"Git Checkout(same as clone,rebase). Params:");
 		mapGitOpsHelp.put("push",
-				"Git Push(sam as commit and push). Params:EEDBCfgFile");
+				"Git Push(same as commit and push). Params:");
 		mapGitOpsHelp.put("init",
-				"Git init. Params:EEDBCfgFile repoId");
+				"Git init. Params:repoId");
 	}
 	
 	
-	static void initSolder(File fileCfg,String stCmd) throws IOException {
-		Validator.checkFile(fileCfg, "Enigma DB file to store.");
-		logConsole("Initializing EESessionProvider using config "+fileCfg.getAbsolutePath());
-		EESessionProvider.init(fileCfg);
-		logConsole("Success initializing EESessionProvider using config "+fileCfg.getAbsolutePath());
+	void initSolder(String stCmd) throws IOException {
+		
+		Map<String, String> mapEnv = System.getenv();
+		String stInstall = mapEnv.get("ENIGMA_INSTALL");
+		File fileInstall = makeFile(stInstall);
+		File fileEECfg = new File(fileInstall,"ens/WEB-INF/ens.cfg");
+		logConsole("Initializing EESessionProvider using config "+fileEECfg.getAbsolutePath());
+		Validator.checkFile(fileEECfg, "Given config file");
+		
+		EESessionProvider.init(fileEECfg);
+		logConsole("Success initializing EESessionProvider using config "+fileEECfg.getAbsolutePath());
 		ISession s = SessionManager.createSystemSession();
 		s.beginTrans("InitSolder", null, false);
 		SolderMain.init();
@@ -147,8 +154,8 @@ public class SolderCLI  extends AbstractCLI {
 			switch (op) {
 			case "create":
 			{
-				File fileCfg = makeFile(args[nParam++]);
-				initSolder(fileCfg,"SolderCLIGitCreate");
+				
+				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile(args[nParam++]);
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
@@ -166,8 +173,8 @@ public class SolderCLI  extends AbstractCLI {
 			break;
 			
 			case "init": {
-				File fileCfg = makeFile(args[nParam++]);
-				initSolder(fileCfg,"SolderCLIGitCreate");
+				
+				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
@@ -177,8 +184,8 @@ public class SolderCLI  extends AbstractCLI {
 			}
 			
 			case "checkout": {
-				File fileCfg = makeFile(args[nParam++]);
-				initSolder(fileCfg,"SolderCLIGitCreate");
+				
+				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
@@ -187,8 +194,8 @@ public class SolderCLI  extends AbstractCLI {
 			}
 			
 			case "push": {
-				File fileCfg = makeFile(args[nParam++]);
-				initSolder(fileCfg,"SolderCLIGitCreate");
+				
+				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
