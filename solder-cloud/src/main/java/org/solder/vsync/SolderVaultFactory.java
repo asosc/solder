@@ -19,17 +19,21 @@ import org.solder.core.SAudit;
 import org.solder.core.SEvent;
 import org.solder.core.SolderException;
 import org.solder.vsync.SolderRepoOps.SLocalRepo;
+import org.solder.vsync.SolderVaultFactory.SRepo;
 
+import com.beech.bfs.Mode;
 import com.beech.store.FileVaultProvider;
 import com.beech.store.IVaultFactory;
 import com.beech.store.IVaultProvider;
 import com.beech.store.TVault;
+import com.ee.rest.RestException;
 import com.ee.session.SQLTm;
 import com.ee.session.db.Audit;
 import com.ee.session.db.BackgroundTask;
 import com.ee.session.db.EEvent;
 import com.ee.session.db.Event;
 import com.ee.session.db.Tenant;
+import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.TReference;
 import com.jnk.util.Validator;
@@ -45,6 +49,7 @@ import com.lnk.jdbc.SQLTableSchema;
 import com.lnk.lucene.RunOnce;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
+import com.lnk.serializer.ISerializable;
 
 public class SolderVaultFactory implements IVaultFactory {
 
@@ -431,11 +436,34 @@ public class SolderVaultFactory implements IVaultFactory {
 	}
 	
 	
-	public static SRepo createBeechSRepo(String id, String schemaName, int tenantId, int aoId) throws IOException {
-		return new SRepo(id, schemaName, tenantId, aoId,"Commits",new String[] {"bee"});
+	public static SRepo ensureSRepo(String id, String schemaName, int tenantId, int aoId) throws IOException {
+		id = Validator.require(id, "repo id",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+		schemaName= Validator.require(schemaName, "schema name",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+		SRepo repo = SolderVaultFactory.getRepoById(id);
+		if (repo != null) {
+			//Make sure schema matches
+			if (repo.getTenantId() != tenantId) {
+				throw new RestException("Id already taken by another tenant. given="+id);
+			}
+			if (!CompareUtils.stringEquals(schemaName,repo.getSchemaName())) {
+				throw new RestException("A previous repo with a different schema "+repo.getSchemaName()+" exist! id="+repo.getId()+", expected schema "+schemaName);
+			}
+			return repo;
+		} else {
+		
+			repo = new SRepo(id, schemaName, tenantId, aoId,"Commits",null);
+			TVault tvault = TVault.open(SolderVaultFactory.TYPE, repo.getId(),Mode.CREATE, null);
+			tvault.close();
+			LOG.info(String.format("GitSync %s newly created Tault ",repo.getId()));
+			SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
+			svf.repoGitPush(repo.getId());
+			return repo;
+		}
+		
+		
 	}
 
-	public static class SRepo {
+	public static class SRepo implements ISerializable {
 		String id, schemaName, commitDir;
 		String[] aExtension;
 		int tenantId, aoId, commitId;

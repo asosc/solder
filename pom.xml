@@ -42,9 +42,7 @@
 		<lucene.version>10.2.2</lucene.version>
 		<nimbo.version>9.0.0</nimbo.version>
 		<talos-junit.version>2.0.1</talos-junit.version>
-		
-		
-
+		<jakarta.servlet.version>6.1.0</jakarta.servlet.version>
 		
 		
 	</properties>

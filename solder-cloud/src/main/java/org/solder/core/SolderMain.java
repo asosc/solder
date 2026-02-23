@@ -10,6 +10,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nimbo.azure.AzureBlobProvider;
 import org.nimbo.blobs.ContainerGroup;
+import org.solder.rest.skel.SolderRestSkeleton;
 import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SyncLocalRepo;
 
@@ -49,6 +50,10 @@ public class SolderMain {
 				return ee.scheduleWithFixedDelay(SolderException.unchecked(SolderMain::syncObjects), CACHE_REFRESH_SECONDS,
 						CACHE_REFRESH_SECONDS, TimeUnit.SECONDS);
 			});
+			
+			//Move this to out -- Ideally to the dedicated servlet that use this.
+			//For now everything gets this.
+			SolderRestSkeleton.init();
 			
 			swInit.stop();
 			Event.log(SEvent.SolderMain_Init,-1,-1, (mb)->{

@@ -69,7 +69,7 @@ public class SolderTableTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SRepo srepo = SolderVaultFactory.createBeechSRepo(repoId, "river", idTenant, random.nextInt());
+			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river", idTenant, random.nextInt());
 
 			TableTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));
 

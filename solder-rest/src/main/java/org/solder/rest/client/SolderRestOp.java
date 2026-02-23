@@ -6,6 +6,7 @@ import org.apache.commons.io.function.IOConsumer;
 import org.apache.commons.io.function.IOFunction;
 
 import com.ee.rest.RestOp;
+import com.ee.rest.client.EnigmaRestOp;
 import com.lnk.serializer.Encoder;
 
 public enum SolderRestOp implements RestOp {

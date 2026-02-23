@@ -65,7 +65,7 @@ public class SolderTSMapTest {
 			if (list.size() > 0) {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
-			SRepo srepo = SolderVaultFactory.createBeechSRepo(repoId, "river_tsmap", idTenant, random.nextInt());
+			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river_tsmap", idTenant, random.nextInt());
 			
 
 			TSMapTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));

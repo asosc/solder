@@ -64,7 +64,7 @@ public class SolderTRefHashTest {
 			if (list.size() > 0) {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
-			SRepo srepo = SolderVaultFactory.createBeechSRepo(repoId, "river_refhash", idTenant, random.nextInt());
+			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river_refhash", idTenant, random.nextInt());
 			
 
 			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));

@@ -34,8 +34,21 @@
 				
 		<dependency>
 			<groupId>com.ee.enigma</groupId>
-			<artifactId>enigma-core</artifactId>
+			<artifactId>enigma-web</artifactId>
 			<version>${enigma.version}</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>jakarta.servlet</groupId>
+			<artifactId>jakarta.servlet-api</artifactId>
+			<version>${jakarta.servlet.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.solder</groupId>
+			<artifactId>solder-rest</artifactId>
+			<version>${solder.version}</version>
 		</dependency>
 		
 		<dependency>

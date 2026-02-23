@@ -2,14 +2,9 @@ package org.solder.rest.client;
 
 import java.io.IOException;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
-
-
 
 import com.ee.rest.client.EnigmaRestObjects.ERemote;
-import com.jnk.util.Validator;
-import com.jnk.util.Validator.Rules;
-import com.jnk.util.cache.CacheHelper;
+import com.lnk.lucene.record.RecordUtil;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
 
@@ -103,6 +98,10 @@ public class SolderRestObjects {
 
 		public Date getLastDate() {
 			return dateUpdate;
+		}
+		
+		public String toString() {
+			return RecordUtil.printJson(this, false);
 		}
 		
 		

@@ -3,9 +3,10 @@ package org.solder.rest.client;
 import java.io.IOException;
 import java.util.Objects;
 
+import org.solder.rest.client.SolderRestObjects.RSRepo;
+
 import com.ee.rest.RestOp.RestClient;
-import com.ee.rest.client.EnigmaRestOp;
-import com.ee.rest.client.EnigmaRestObjects.EDomain;
+import com.ee.rest.client.EnigmaRestClient;
 import com.jnk.util.TReference;
 
 public class SolderRestClient {
@@ -17,10 +18,43 @@ public class SolderRestClient {
 		TReference<RSRepo> ret = new TReference<>();
 		client.doRestCall(SolderRestOp.CREATE, (encoder) -> {
 			// You dont have to send this if it is false.
-			
-			encoder.writeObjectArray("domains", aDomainsToCreate, false);
+			encoder.writeString("id", repoId);
+			encoder.writeString("tschema", schemaName);
+			encoder.writeInt("ao_id", aoId);
 		}, (decoder) -> {
-			ret.set(setClient(decoder.readObjectArray("ret", EDomain.class), client));
+			ret.set(EnigmaRestClient.setClient(decoder.readObject("ret", RSRepo.class), client));
+		});
+		return ret.get();
+	}
+	
+	
+	public static RSRepo getRepo(String repoId,String schemaName,int aoId, RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		TReference<RSRepo> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.CREATE, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoId);
+			encoder.writeString("tschema", schemaName);
+			encoder.writeInt("ao_id", aoId);
+		}, (decoder) -> {
+			ret.set(EnigmaRestClient.setClient(decoder.readObject("ret", RSRepo.class), client));
+		});
+		return ret.get();
+	}
+	
+	
+	public static RSRepo createRepo2(String repoId,String schemaName,int aoId, RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		TReference<RSRepo> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.CREATE, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoId);
+			encoder.writeString("tschema", schemaName);
+			encoder.writeInt("ao_id", aoId);
+		}, (decoder) -> {
+			ret.set(EnigmaRestClient.setClient(decoder.readObject("ret", RSRepo.class), client));
 		});
 		return ret.get();
 	}
