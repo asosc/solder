@@ -18,8 +18,11 @@ import org.nimbo.blobs.BlobFS;
 import org.solder.core.SAudit;
 import org.solder.core.SEvent;
 import org.solder.core.SolderException;
-import org.solder.vsync.SolderRepoOps.SLocalRepo;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.rest.client.RemoteRepoSync;
+import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
+import org.solder.rest.client.RemoteRepoSync.SLocalRepo;
+import org.solder.rest.client.SCommitInfo;
+import org.solder.rest.client.SRepoInfo;
 
 import com.beech.bfs.Mode;
 import com.beech.store.FileVaultProvider;
@@ -49,7 +52,6 @@ import com.lnk.jdbc.SQLTableSchema;
 import com.lnk.lucene.RunOnce;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
-import com.lnk.serializer.ISerializable;
 
 public class SolderVaultFactory implements IVaultFactory {
 
@@ -103,17 +105,19 @@ public class SolderVaultFactory implements IVaultFactory {
 			//Solder Sync On...
 			lrepo = new SLocalRepo(repo, fileProv,true);
 			//We want to make sure the lrepo has 
-			if (repo.commitId>0 && lrepo.commitId != repo.commitId ) {
+			if (repo.getCommitId()>0 && lrepo.getCommitId() != repo.getCommitId() ) {
 				//Need to Sync...
-				SolderRepoOps.repoCheckout(lrepo);
+				IRepoFileService rfs = ServerRepoFileService.get();
+				RemoteRepoSync.repoCheckout(lrepo,rfs);
 			}
 			fvp = new FileVaultProvider(fileProv.getAbsolutePath(), fReadOnly);
 		}
 		
 		public void repoGitPush() throws IOException{
-			SolderRepoOps.repCommit(repo, fileProv, (props)->{
+			IRepoFileService rfs = ServerRepoFileService.get();
+			RemoteRepoSync.repCommit(repo, fileProv, (props)->{
 				props.put("message","SolderVaultProvider");
-			});
+			},rfs);
 		}
 		
 		
@@ -246,7 +250,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		return (int) SQLTm.get().nextSequenceId(reqQ.qCommitSeq);
 	}
 
-	public static class SCommit implements Comparable<SCommit> {
+	public static class SCommit extends SCommitInfo implements Comparable<SCommitInfo> {
 		int id,idPrev;
 
 		String chash, repoId,chashPrev;
@@ -463,17 +467,16 @@ public class SolderVaultFactory implements IVaultFactory {
 		
 	}
 
-	public static class SRepo implements ISerializable {
-		String id, schemaName, commitDir;
-		String[] aExtension;
-		int tenantId, aoId, commitId;
-		Date dateCommit, dateChange, dateCreate, dateUpdate;
+	public static class SRepo extends SRepoInfo  {
+		
 
 		public SRepo() {
+			super();
 		}
 
 		public SRepo(String id, String schemaName, int tenantId, int aoId, String commitDir, String[] aExtensions)
 				throws IOException {
+			super();
 			this.id = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 			this.schemaName = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 
@@ -504,7 +507,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			getProvider(false);
 			insert();
 		}
+		
+		//We keep it overridden because this is used both db and other serializer.
 
+		/*
 		public void serialize(Encoder encoder) throws IOException {
 			encoder.writeString("id", id);
 			encoder.writeString("tschema", schemaName);
@@ -532,6 +538,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			dateCreate = decoder.readDate("create_date");
 			dateUpdate = decoder.readDate("last_update");
 		}
+		*/
 
 		public String[] cacheKeys() {
 			return new String[] { CacheHelper.getKey(CacheHelper.KEY_ID, id),
@@ -608,9 +615,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			//Solder Sync On...
 			SLocalRepo lrepo = new SLocalRepo(this, fileProv,true);
 			//We want to make sure the lrepo has 
-			if (commitId>0 && lrepo.commitId != this.commitId ) {
+			if (commitId>0 && lrepo.getCommitId() != this.commitId ) {
 				//Need to Sync...
-				SolderRepoOps.repoCheckout(lrepo);
+				IRepoFileService rfs = ServerRepoFileService.get();
+				RemoteRepoSync.repoCheckout(lrepo,rfs);
 			}
 			
 			return new FileVaultProvider(fileProv.getAbsolutePath(), fReadOnly);
@@ -739,7 +747,8 @@ public class SolderVaultFactory implements IVaultFactory {
 			SyncLocalRepo syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
 			File fileLocalRepo = syncCache.ensureSyncFolder(id);
 			try {
-				SolderRepoOps.repInit(this, fileLocalRepo);
+				IRepoFileService rfs = ServerRepoFileService.get();
+				RemoteRepoSync.repInit(this, fileLocalRepo,rfs);
 			} catch (Exception e) {
 				Event.log(SEvent.SRepoSyncError, aoId, tenantId, (mb) -> {
 					mb.put("table", "srepo`");

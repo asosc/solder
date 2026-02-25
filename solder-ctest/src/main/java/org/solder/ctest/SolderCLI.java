@@ -5,18 +5,18 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.Objects;
 import java.util.TreeMap;
 
 import org.apache.commons.cli.Option;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.nimbo.blobs.ContainerGroup;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
-import org.solder.vsync.SolderRepoOps;
+import org.solder.rest.client.RemoteRepoSync;
+import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
+import org.solder.rest.client.RemoteRepoSync.SLocalRepo;
+import org.solder.vsync.ServerRepoFileService;
 import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderRepoOps.SLocalRepo;
 import org.solder.vsync.SolderVaultFactory.SRepo;
 
 import com.aura.crypto.CryptoScheme;
@@ -25,7 +25,6 @@ import com.ee.session.SessionManager;
 import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Tenant;
 import com.jnk.junit.AbstractCLI;
-import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
@@ -238,11 +237,11 @@ public class SolderCLI  extends AbstractCLI {
 			} else {
 				logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
 			}
-			
-			SolderRepoOps.repInit(repo, fileCache);
-			SolderRepoOps.repCommit(repo, fileCache,(mapCommit)->{
+			IRepoFileService rfs = ServerRepoFileService.get();
+			RemoteRepoSync.repInit(repo, fileCache,rfs);
+			RemoteRepoSync.repCommit(repo, fileCache,(mapCommit)->{
 				mapCommit.put("cmsg", "SolderCLI gitCreate");
-			});
+			},rfs);
 			
 		}
 		
@@ -265,14 +264,15 @@ public class SolderCLI  extends AbstractCLI {
 			} else {
 				logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
 			}
-			SolderRepoOps.repInit(repo, fileCache);
+			IRepoFileService rfs = ServerRepoFileService.get();
+			RemoteRepoSync.repInit(repo, fileCache,rfs);
 			
 		}
 		
 		
 		void gitCheckout(File fileCache)  throws IOException {
 			
-			String stId = SolderRepoOps.readLocalRepoId(fileCache);
+			String stId = RemoteRepoSync.readLocalRepoId(fileCache);
 			
 			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			
@@ -286,16 +286,16 @@ public class SolderCLI  extends AbstractCLI {
 			} else {
 				logConsole(String.format("Found repo. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
 			}
-			
+			IRepoFileService rfs = ServerRepoFileService.get();
 			SLocalRepo lrepo = new SLocalRepo(repo, fileCache,false);
-			SolderRepoOps.repoCheckout(lrepo);
+			RemoteRepoSync.repoCheckout(lrepo,rfs);
 			logConsole(String.format("Done checkout"));
 		}
 		
 		void gitPush(File fileCache)  throws IOException {
 			
 	
-			String stId = SolderRepoOps.readLocalRepoId(fileCache);
+			String stId = RemoteRepoSync.readLocalRepoId(fileCache);
 			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			
 			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
@@ -307,11 +307,11 @@ public class SolderCLI  extends AbstractCLI {
 			} else {
 				logConsole(String.format("Found repo. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
 			}
+			IRepoFileService rfs = ServerRepoFileService.get();
 			
-			
-			SolderRepoOps.repCommit(repo,fileCache,(mapCommit)->{
+			RemoteRepoSync.repCommit(repo,fileCache,(mapCommit)->{
 				mapCommit.put("cmsg", "SolderCLI gitpush");
-			});
+			},rfs);
 			logConsole(String.format("Done push"));
 		}
 

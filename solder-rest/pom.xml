@@ -24,6 +24,12 @@
 			<artifactId>enigma-rest</artifactId>
 			<version>${enigma.version}</version>
 		</dependency>
+		
+		<dependency>
+			<groupId>com.beech</groupId>
+			<artifactId>beech-store</artifactId>
+			<version>${beech.version}</version>
+		</dependency>
 
 
 		
