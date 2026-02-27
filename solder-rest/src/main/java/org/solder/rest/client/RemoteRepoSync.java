@@ -204,6 +204,10 @@ public class RemoteRepoSync {
 		public File getFile() {
 			return file;
 		}
+		
+		public void setFile(File file) {
+			this.file=file;
+		}
 
 		public String toString() {
 			return String.format("SolderEntry %s type=%s len=%s (digest=%s lastMod=%d blobFsId=%s commitId=%d)",
@@ -768,6 +772,8 @@ public class RemoteRepoSync {
 	
 	public static interface IRepoFileService {
 		
+		public SRepoInfo getRepo(String repoId) throws IOException;
+		
 		public SCommitInfo getLatestCommit(SRepoInfo repoInfo) throws IOException;
 		
 		public File downloadFile(SRepoInfo repoInfo,String relPath,long blobFsId) throws IOException;
@@ -778,9 +784,7 @@ public class RemoteRepoSync {
 		
 		public void uploadFile(SRepoInfo repoInfo,SolderEntry se) throws IOException;
 		
-		public void commitUpload(SRepoInfo repoInfo,SCommitInfo scommit,CommitInfo commitInfo) throws IOException;
-		
-		 
+		public void commitUpload(SRepoInfo srepoInfo,SCommitInfo sci,File fileCommit,List<String> listDelEntryRelPath) throws IOException;
 		
 	}
 
@@ -1002,7 +1006,7 @@ public class RemoteRepoSync {
 			cCommitProp.accept(mapCommitInfo);
 		}
 
-		SCommitInfo scommit = rfs.createSCommit(srepo, commitInfo.getCHash(), mapCommitInfo, commitInfo.commitId);
+		SCommitInfo sci = rfs.createSCommit(srepo, commitInfo.getCHash(), mapCommitInfo, commitInfo.commitId);
 
 		
 		for (String stAddRelPath : commitInfo.listAdd) {
@@ -1015,7 +1019,8 @@ public class RemoteRepoSync {
 		// Actual Commit file..
 		// fileCommit
 		commitInfo.finalizeFsCommit();
-		rfs.commitUpload(srepo,scommit,commitInfo);
+		
+		rfs.commitUpload(srepo,sci,commitInfo.getFileCommit(),commitInfo.listDel);
 		
 		
 

@@ -9,7 +9,7 @@ import java.util.TreeMap;
 import org.apache.commons.cli.Option;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.solder.rest.client.SolderRestObjects.RSRepo;
+import org.solder.rest.client.RemoteRepoSync.SLocalRepo;
 
 import com.aura.crypto.CryptoScheme;
 import com.ee.rest.RestException;
@@ -20,6 +20,7 @@ import com.ee.rest.client.EnigmaRestOp;
 import com.jnk.junit.AbstractCLI;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
+import com.jnk.util.Validator.Rules;
 import com.jnk.util.random.IRandom;
 import com.lnk.lucene.TempFiles;
 
@@ -99,6 +100,7 @@ public class SolderRestCLI  extends AbstractCLI {
 	}
 	
 	private static RestClient client = null;
+	private static RestRepoFileService service = null;
 	void initSolder(String stCmd) throws IOException {
 		
 		
@@ -114,6 +116,7 @@ public class SolderRestCLI  extends AbstractCLI {
 		client = new RestClient(ClientType.HTTP,"http://localhost:8080");
 		String sessKey = EnigmaRestClient.login(EnigmaRestOp.AUTH_TYPE_ENIGMA,user,pwd,client);
 		LOG.info(String.format("Logged in; created session with key=%s",sessKey));
+		service = new RestRepoFileService(client);
 		
 	}
 
@@ -153,8 +156,8 @@ public class SolderRestCLI  extends AbstractCLI {
 				String schemaName = args[nParam++];
 							
 				int aoId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
-				RSRepo rsRepo =  SolderRestClient.createRepo(repoId,schemaName,aoId,client) ;
-				logConsole("id: "+repoId+"; schema="+schemaName+"{; rsRepo="+rsRepo);
+				SRepoInfo srepoInfo =  SolderRestClient.createRepo(repoId,schemaName,aoId,client) ;
+				logConsole("id: "+repoId+"; schema="+schemaName+"{; rsRepo="+srepoInfo);
 				//gitCreate(fileCache,stId,schemaName,tenantId,aoId);
 			}
 			break;
@@ -166,7 +169,7 @@ public class SolderRestCLI  extends AbstractCLI {
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
 				String stId = args[nParam++];
-				//gitInit(fileCache,stId);
+				gitInit(fileCache,stId);
 				break;
 			}
 			
@@ -176,7 +179,7 @@ public class SolderRestCLI  extends AbstractCLI {
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
-				//gitCheckout(fileCache);
+				gitCheckout(fileCache);
 				break;
 			}
 			
@@ -187,7 +190,7 @@ public class SolderRestCLI  extends AbstractCLI {
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
 				
-				//gitPush(fileCache);
+				gitPush(fileCache);
 				break;
 			}
 			
@@ -205,7 +208,59 @@ public class SolderRestCLI  extends AbstractCLI {
 		
 		
 	
+	
 		
+
+		void gitInit(File fileCache,String stId)  throws IOException {
+			
+			
+			
+			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			
+			
+			logConsole(String.format("Git Init Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
+			
+			//Ensure the record is there..
+			SRepoInfo repo = service.getRepo(stId);
+			RemoteRepoSync.repInit(repo, fileCache,service);
+			
+		}
+		
+		
+		void gitCheckout(File fileCache)  throws IOException {
+			
+			String stId = RemoteRepoSync.readLocalRepoId(fileCache);
+			
+			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			
+			
+			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
+			
+			SRepoInfo repo = service.getRepo(stId);
+			
+			
+			SLocalRepo lrepo = new SLocalRepo(repo, fileCache,false);
+			RemoteRepoSync.repoCheckout(lrepo,service);
+			logConsole(String.format("Done checkout"));
+		}
+		
+		void gitPush(File fileCache)  throws IOException {
+			
+	
+			String stId = RemoteRepoSync.readLocalRepoId(fileCache);
+			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			
+			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
+			
+			//Ensure the record is there..
+			SRepoInfo repo = service.getRepo(stId);
+			
+			
+			RemoteRepoSync.repCommit(repo,fileCache,(mapCommit)->{
+				mapCommit.put("cmsg", "SolderCLI gitpush");
+			},service);
+			logConsole(String.format("Done push"));
+		}
 
 	}
 	

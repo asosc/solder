@@ -600,6 +600,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			return dateUpdate;
 		}
 		
+		public int generateNewCommitId() throws IOException {
+			return SolderVaultFactory.generateCommitId();
+		}
+		
 		
 		SyncLocalRepo syncCache = null;
 

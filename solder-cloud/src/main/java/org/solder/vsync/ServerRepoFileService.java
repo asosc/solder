@@ -25,7 +25,6 @@ import org.nimbo.blobs.ContainerGroup;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
 import org.solder.rest.client.RemoteRepoSync;
-import org.solder.rest.client.RemoteRepoSync.CommitInfo;
 import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
 import org.solder.rest.client.RemoteRepoSync.SolderEntry;
 import org.solder.rest.client.SCommitInfo;
@@ -55,6 +54,11 @@ public class ServerRepoFileService  implements IRepoFileService {
 	SRepo getSRepo(SRepoInfo srepoInfo) throws IOException {
 		Objects.requireNonNull(srepoInfo,"srepo");
 		return (SRepo)srepoInfo;
+	}
+	
+	public SRepoInfo getRepo(String repoId) throws IOException {
+		SRepo repo = SolderVaultFactory.getRepoById(repoId);
+		return Objects.requireNonNull(repo,()->"repo "+repoId);
 	}
 	
 	
@@ -161,15 +165,17 @@ public class ServerRepoFileService  implements IRepoFileService {
 	
 	
 	
-	public void commitUpload(SRepoInfo srepoInfo,SCommitInfo sci,CommitInfo commitInfo) throws IOException {
+	public void commitUpload(SRepoInfo srepoInfo,SCommitInfo sci,File fileCommit,List<String> listDelEntryRelPath) throws IOException {
 		
 		String cgName = SolderMain.getSolderContainerGroupName();
 		ContainerGroup cg = ContainerGroup.get(cgName);
+		Objects.requireNonNull(cg, " cg " + cgName);
+		
 		
 		SRepo srepo = getSRepo(srepoInfo);
+		Objects.requireNonNull(sci, " sci ");
+		Validator.checkFile(fileCommit, "fileCommit");
 		
-
-		Objects.requireNonNull(cg, " cg " + cgName);
 		
 		SCommit scommit = (SCommit)sci;
 		
@@ -180,14 +186,14 @@ public class ServerRepoFileService  implements IRepoFileService {
 		mapInfo.put("pid", SessionManager.getPid());
 		CryptoScheme cs = CryptoScheme.getDefault();
 		String name = cs.getUUID();
-		BlobFS blobCommit = new BlobFS(name, RemoteRepoSync.BLOB_TYPE_SOLDER_COMMIT, srepo.getId(), commitInfo.getCommitId(), mapInfo,
+		BlobFS blobCommit = new BlobFS(name, RemoteRepoSync.BLOB_TYPE_SOLDER_COMMIT, srepo.getId(), sci.getId(), mapInfo,
 				srepo.getTenantId(), -1);
 		BlobFileTransact bft = cg.beginFileTransact(blobCommit);
 		boolean fError = true;
 		FileOutputStream fos = null;
 		InputStream is = null;
 		try {
-			is = new FileInputStream(commitInfo.getFileCommit());
+			is = new FileInputStream(fileCommit);
 			File fileOut = bft.getFile();
 			fos = new FileOutputStream(fileOut);
 			DigestOutputStream dos = new DigestOutputStream(fos, md);
@@ -206,8 +212,8 @@ public class ServerRepoFileService  implements IRepoFileService {
 				bft.abort();
 			}
 		}
-		List<String> listDel = commitInfo.getDelEntryRelPath();
-		if (listDel.size() > 0) {
+		
+		if (listDelEntryRelPath!=null && listDelEntryRelPath.size() > 0) {
 			List<BlobFS> listPrev = BlobFS.selectByOwner(SolderVaultFactory.TYPE, srepo.getId());
 			LOG.info(String.format("SVault rep %s found %d objects.", srepo.getId(), listPrev.size()));
 
@@ -219,7 +225,7 @@ public class ServerRepoFileService  implements IRepoFileService {
 				}
 			}
 			String ownerDelete = srepo.getId() + "_del";
-			for (String stDelRelPath : listDel) {
+			for (String stDelRelPath : listDelEntryRelPath) {
 				BlobFS fsToDelete = mapBlobFSPrev.get(stDelRelPath);
 				if (fsToDelete != null) {
 					fsToDelete.updateOwner(null, ownerDelete);

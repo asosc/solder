@@ -6,21 +6,24 @@ import org.apache.commons.io.function.IOConsumer;
 import org.apache.commons.io.function.IOFunction;
 
 import com.ee.rest.RestOp;
-import com.ee.rest.client.EnigmaRestOp;
 import com.lnk.serializer.Encoder;
 
 public enum SolderRestOp implements RestOp {
 
-		CREATE("sol_create", SolderRestOp::autoboxSolder, false, false),
-		CHECKOUT("sol_checkout", EnigmaRestOp::autoBoxLogin, false, false),
-		PUSH("sol_push", EnigmaRestOp::autoBoxLogin, false, false),
-		INIT("sol_init", EnigmaRestOp::autoBoxLogin, false, false);
-	
+		CREATE("solcreate", SolderRestOp::autoboxSolder, false, false),
+		GET("solget", SolderRestOp::autoboxSolder, false, false),
+		GET_LATEST_COMMIT("solglc", SolderRestOp::autoboxSolder, false, false),
+		DOWNLOAD_FILE("soldf", SolderRestOp::autoboxSolder, false, true),
+		GEN_NEW_COMMIT_ID("solgnci", SolderRestOp::autoboxSolder, false, false),
+		
+		UPLOAD_FILE("soluf", null, true, false),
+		COMMIT_UPLOAD("solcu", null, true, false);
+		
 	
 	// AutoBoxers...
 		public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {
 			return (encoder) -> {
-					RestOp.addIfAvailable(encoder,fnValue,Session_KEY,"repo_id","schema","ao_id");
+					RestOp.addIfAvailable(encoder,fnValue,Session_KEY,"repo_id","schema","ao_id","rel_path","blob_fsid");
 			};
 		}
 	
@@ -63,7 +66,7 @@ public enum SolderRestOp implements RestOp {
 	}
 
 	public boolean requireSession() {
-		return false;
+		return true;
 	}
 		
 		
