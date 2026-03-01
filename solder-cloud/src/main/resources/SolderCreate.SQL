@@ -17,6 +17,8 @@ CREATE TABLE srepo (
 CREATE SEQUENCE scommit_seq START WITH 1 INCREMENT BY 1 NO CYCLE NO CACHE;
 
 
+
+
 CREATE TABLE scommit (
 	id int NOT NULL,
 	repo_id nvarchar(48) NOT NULL,
@@ -30,5 +32,5 @@ CREATE TABLE scommit (
 	info_split2 nvarchar(255) NULL,
 	info_split3 nvarchar(255) NULL,
 	CONSTRAINT pk_scommit PRIMARY KEY (id) ON EeFileGroup,
-	CONSTRAINT uk_scommit UNIQUE(repo_id,chash) ON EeFileGroup
+	CONSTRAINT uk_scommit UNIQUE(repo_id,prev_id,chash) ON EeFileGroup
 ) ON EeFileGroup;

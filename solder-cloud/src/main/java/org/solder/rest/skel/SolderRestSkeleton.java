@@ -155,6 +155,7 @@ public enum SolderRestSkeleton {
 			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
+			repo.refresh();
 			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
 			refRepo.set(repo);
 		});

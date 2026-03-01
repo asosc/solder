@@ -12,9 +12,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
-import org.solder.rest.client.RemoteRepoSync;
-import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
-import org.solder.rest.client.RemoteRepoSync.SLocalRepo;
+import org.solder.rest.client.SolderGitClient;
 import org.solder.vsync.ServerRepoFileService;
 import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SolderVaultFactory.SRepo;
@@ -28,7 +26,6 @@ import com.jnk.junit.AbstractCLI;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
-import com.jnk.util.Validator.Rules;
 import com.jnk.util.random.IRandom;
 import com.lnk.lucene.TempFiles;
 
@@ -105,8 +102,8 @@ public class SolderCLI  extends AbstractCLI {
 				"Git init. Params:repoId");
 	}
 	
-	
-	void initSolder(String stCmd) throws IOException {
+	private static SolderGitClient gitClient = null;
+	void initSolder(String stCmd,File fileCache,String repoId) throws IOException {
 		
 		Map<String, String> mapEnv = System.getenv();
 		String stInstall = mapEnv.get("ENIGMA_INSTALL");
@@ -125,7 +122,9 @@ public class SolderCLI  extends AbstractCLI {
 			ISession s2 = SessionManager.createSystemSession();
 			s2.beginTrans(stCmd, null, false);
 		}
-		
+		if (fileCache != null) {
+			gitClient = new SolderGitClient(ServerRepoFileService.get(),fileCache,repoId,(st)->logConsole(st));
+		}
 	}
 
 	
@@ -154,52 +153,74 @@ public class SolderCLI  extends AbstractCLI {
 			case "create":
 			{
 				
-				initSolder("SolderCLIGitCreate");
+				initSolder("SolderCLIGitCreate",null,null);
 				File fileCache = makeFile(args[nParam++]);
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
 				
 				IRandom r = CryptoScheme.getDefault().getRandom();
-				String stId = args[nParam++];
+				String repoId = args[nParam++];
 				String schemaName = args[nParam++];
 				
 				int tenantId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
 				int aoId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
 				
-				logConsole("id: "+stId+"; schema="+schemaName);
-				gitCreate(fileCache,stId,schemaName,tenantId,aoId);
+				logConsole("id: "+repoId+"; schema="+schemaName);
+				
+				String stCommitDir = "Commits";
+				String[] aExt = new String[] {"bee"};
+				SRepo repo = SolderVaultFactory.getRepoById(repoId);
+				if (repo==null) {
+					logConsole(String.format("No previous repo found. creating.."));
+					repo = new SRepo(repoId,schemaName,tenantId,aoId,stCommitDir,aExt);
+				} else {
+					logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
+				}
+				
 			}
 			break;
 			
 			case "init": {
-				
-				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
-				String stId = args[nParam++];
-				gitInit(fileCache,stId);
+				String repoId = args[nParam++];
+				initSolder("SolderCLIGitInit",fileCache,repoId);
+				gitClient.gitInit();
 				break;
 			}
 			
 			case "checkout": {
-				
-				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
-				gitCheckout(fileCache);
+				String repoId = null; //load it .srepo
+				initSolder("SolderCLIGitCheckOut",fileCache,repoId);
+				gitClient.gitCheckout();
+				
 				break;
 			}
 			
 			case "push": {
-				
-				initSolder("SolderCLIGitCreate");
 				File fileCache = makeFile("");
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
-				
-				gitPush(fileCache);
+				String repoId = null; //load it .srepo
+				initSolder("SolderCLIGitPush",fileCache,repoId);
+				gitClient.gitPush();
+
+				break;
+			}
+			
+			
+			case "status": {
+				File fileCache = makeFile("");
+				logConsole("File Cache: "+fileCache.getAbsolutePath());
+				Validator.checkDir(fileCache, false,"Git Cache");
+				String repoId = null; //load it .srepo
+				initSolder("SolderCLIGitStatus",fileCache,repoId);
+				gitClient.gitStatus();
+
 				break;
 			}
 			
@@ -210,110 +231,8 @@ public class SolderCLI  extends AbstractCLI {
 			}
 
 		}
-
 		public void close() {
 			
 		}
-		
-		
-	
-		void gitCreate(File fileCache,String stId,String schemaName,int tenantId,int aoId)  throws IOException {
-			
-			
-			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			schemaName = Validator.require(schemaName,"schemaName ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			
-			logConsole(String.format("Create Solder Rep %s (schema=%s) using dir %s",stId,schemaName,fileCache.getAbsolutePath()));
-			
-			
-			String stCommitDir = "Commits";
-			String[] aExt = new String[] {"bee"};
-			
-			//Ensure the record is there..
-			SRepo repo = SolderVaultFactory.getRepoById(stId);
-			if (repo==null) {
-				logConsole(String.format("No previous repo found. creating.."));
-				repo = new SRepo(stId,schemaName,tenantId,aoId,stCommitDir,aExt);
-			} else {
-				logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
-			}
-			IRepoFileService rfs = ServerRepoFileService.get();
-			RemoteRepoSync.repInit(repo, fileCache,rfs);
-			RemoteRepoSync.repCommit(repo, fileCache,(mapCommit)->{
-				mapCommit.put("cmsg", "SolderCLI gitCreate");
-			},rfs);
-			
-		}
-		
-		
-		void gitInit(File fileCache,String stId)  throws IOException {
-			
-			
-			
-			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			
-			
-			logConsole(String.format("Git Init Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
-			
-			
-						
-			//Ensure the record is there..
-			SRepo repo = SolderVaultFactory.getRepoById(stId);
-			if (repo==null) {
-				throw new SolderException("Unknown repo id "+stId);
-			} else {
-				logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
-			}
-			IRepoFileService rfs = ServerRepoFileService.get();
-			RemoteRepoSync.repInit(repo, fileCache,rfs);
-			
-		}
-		
-		
-		void gitCheckout(File fileCache)  throws IOException {
-			
-			String stId = RemoteRepoSync.readLocalRepoId(fileCache);
-			
-			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			
-			
-			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
-			
-			//Ensure the record is there..
-			SRepo repo = SolderVaultFactory.getRepoById(stId);
-			if (repo==null) {
-				logConsole(String.format("Unknown repoId "+stId));
-			} else {
-				logConsole(String.format("Found repo. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
-			}
-			IRepoFileService rfs = ServerRepoFileService.get();
-			SLocalRepo lrepo = new SLocalRepo(repo, fileCache,false);
-			RemoteRepoSync.repoCheckout(lrepo,rfs);
-			logConsole(String.format("Done checkout"));
-		}
-		
-		void gitPush(File fileCache)  throws IOException {
-			
-	
-			String stId = RemoteRepoSync.readLocalRepoId(fileCache);
-			stId = Validator.require(stId,"id ",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			
-			logConsole(String.format("Checout Solder Rep %s using dir %s",stId,fileCache.getAbsolutePath()));
-			
-			//Ensure the record is there..
-			SRepo repo = SolderVaultFactory.getRepoById(stId);
-			if (repo==null) {
-				logConsole(String.format("Unknown repoId "+stId));
-			} else {
-				logConsole(String.format("Found repo. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
-			}
-			IRepoFileService rfs = ServerRepoFileService.get();
-			
-			RemoteRepoSync.repCommit(repo,fileCache,(mapCommit)->{
-				mapCommit.put("cmsg", "SolderCLI gitpush");
-			},rfs);
-			logConsole(String.format("Done push"));
-		}
-
 	}
 }

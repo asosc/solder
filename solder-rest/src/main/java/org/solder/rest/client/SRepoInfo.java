@@ -2,7 +2,9 @@ package org.solder.rest.client;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.Objects;
 
+import com.ee.rest.RestException;
 import com.ee.rest.client.EnigmaRestObjects.ERemote;
 import com.lnk.lucene.record.RecordUtil;
 import com.lnk.serializer.Decoder;
@@ -47,6 +49,8 @@ public class SRepoInfo extends ERemote  {
 		dateCreate = decoder.readDate("create_date");
 		dateUpdate = decoder.readDate("last_update");
 	}
+	
+	
 
 	
 	public String getId() {
@@ -102,11 +106,19 @@ public class SRepoInfo extends ERemote  {
 	}
 	
 	public void refresh() throws IOException {
-		 
-		//Db implementation can get it back from DB
-		//We too can make a rest call (later..)
 		
-	}
-	
+		SRepoInfo repoRefresh = SolderRestClient.getRepo(id, getClient());
+		Objects.requireNonNull(repoRefresh,"refresh repo");
+		if (!repoRefresh.getId().equals(id) || repoRefresh.getTenantId() != tenantId) {
+			throw new RestException("Error refreshing, obj mismatch");
+		}
+		
+		this.commitId=repoRefresh.commitId;
+		dateCommit = repoRefresh.dateCommit;
+		dateChange = repoRefresh.dateChange;
+		dateUpdate = repoRefresh.dateUpdate;
+		
+		
+	}	
 	
 }

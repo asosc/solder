@@ -233,6 +233,8 @@ public class RemoteRepoSync {
 		return new BeechLDirectory(fs, fs.getFileName(), dirRoot, mode, onClose);
 	}
 	
+	
+	
 	public static void checkLocalRepoExists(File fileLocalRepoRoot) throws IOException {
 		File fileCommitPath = new File(fileLocalRepoRoot, getLocalRepoCommitPath());
 		if (!fileCommitPath.exists()) {
@@ -540,18 +542,11 @@ public class RemoteRepoSync {
 			Objects.requireNonNull(rfs,"rfs");
 			
 			//Make sure we can even commit...
-			int lRepoCommitId = lRepo.commitId;
-			String lRepoCHash = lRepo.chash;
-			
 			SRepoInfo srepo = lRepo.srepo;
 			Objects.requireNonNull(srepo,"srepo");
 			
 			//Refresh just before we commit.
 			srepo.refresh();
-			
-			int srepoCommitId = srepo.getCommitId();
-			
-			
 			
 			//Match ids first..
 			Consumer<MapBuilder> cEventMb = (mb)->{
@@ -562,13 +557,10 @@ public class RemoteRepoSync {
 			};
 			
 			
-			if (srepoCommitId>0) {
-				verifyLatestCommit(lRepo);
-			}
 			
 			sbHash = new StringBuilder();
 			//Put the commit Id 
-			sbHash.append(String.format("commitId: %d\r\n", srepoCommitId));
+			
 
 			Map<String, SolderEntry> mapSolderEntry = new LinkedHashMap<>();
 			mapSolderEntry.putAll(lRepo.mapEntry);
@@ -679,6 +671,7 @@ public class RemoteRepoSync {
 				fsCommit.commit();
 			} else {
 				//Dont bother with commiting etc.. Just close...
+				LOG.info(String.format("No changes deteced; Not a new Commit. "));
 			}
 			
 			fsCommit.close();
@@ -717,6 +710,10 @@ public class RemoteRepoSync {
 			listAdd = toList(decoder.readStringArray("se_add"));
 			listDel = toList(decoder.readStringArray("se_del"));
 		}
+		
+		public boolean isNewCommit() {
+			return fNewCommit;
+		}
 
 		public int getCommitId() {
 			return commitId;
@@ -739,34 +736,6 @@ public class RemoteRepoSync {
 			return mapAll;
 		}
 		
-		public void verifyLatestCommit(SLocalRepo lRepo) throws IOException{
-			
-			//Refresh just before we commit.
-		
-				
-				//Make sure we can even commit...
-				int lRepoCommitId = lRepo.commitId;
-				String lRepoCHash = lRepo.chash;
-				
-				SRepoInfo srepo = lRepo.srepo;
-				Objects.requireNonNull(srepo,"srepo");
-			
-			int srepoCommitId = srepo.getCommitId();
-			/*
-			if (srepoCommitId>0) {
-				SCommitInfo scommitLatest = srepo.getLatestCommit();
-				if (lRepoCommitId != srepoCommitId || !CompareUtils.stringEquals(lRepoCHash,scommitLatest.chash)) {
-					Event.log(SEvent.SRepoSyncError, srepo.aoId, srepo.getTenantId(), (mb) -> {
-						cEventMb.accept(mb);
-						mb.put("error", "Sync commitId mismatch");
-						mb.put("srepo_chash", scommitLatest.chash);
-					});
-					throw new RestException("RepoCommitId mismatch current="+lRepo.commitId+"; latest="+srepo.commitId);
-				}
-			}
-			*/
-		}
-
 	}
 	
 	
@@ -788,40 +757,6 @@ public class RemoteRepoSync {
 		
 	}
 
-	
-	
-	
-	
-	/**
-	 * This function should be use if you have files for the repository already
-	 * created and you have not made the files as part of the clone...
-	 * 
-	 * Will only work if there is NO .solder directory. This will first clone and
-	 * Bring everything over (without overwriting existing files in the directory.
-	 * 
-	 * Commit can be called after.
-	 * 
-	 * @param srepo
-	 * @param fileCache
-	 * @throws IOException
-	 */
-	public static void repInit(SRepoInfo srepo, File fileCache,IRepoFileService rfs) throws IOException {
-
-		SLocalRepo lrepo = new SLocalRepo(srepo, fileCache,true);
-		Objects.requireNonNull(rfs,"Repo File Service");
-		if (srepo.getCommitId() > 0) {
-			// Repository has commits..
-			// Get the Latest..
-			LOG.info(String.format("Repo %s has commit; latest=%d (date=%s)", srepo.getId(), srepo.getCommitId(),
-					PrintUtils.print(srepo.getCommitDate())));
-			repoCheckout(lrepo,rfs);
-		} else {
-			LOG.info(String.format("Repo %s has no commits. Nothing to do", srepo.getId()));
-		}
-
-	}
-
-	
 	public static void repoCheckout(SLocalRepo lrepo,IRepoFileService rfs) throws IOException {
 		// All New mean we cannot have any clash of relpaths in the directory.
 
@@ -982,7 +917,7 @@ public class RemoteRepoSync {
 	}
 	
 	
-	public static void repCommit(SRepoInfo srepo, File fileCache, Consumer<Map<String, String>> cCommitProp,IRepoFileService rfs)
+	public static CommitInfo repCommit(SLocalRepo lRepo, File fileCache, Consumer<Map<String, String>> cCommitProp,IRepoFileService rfs)
 			throws IOException {
 
 		// SVault svault;
@@ -990,12 +925,12 @@ public class RemoteRepoSync {
 		// IOException {
 		Objects.requireNonNull(rfs,"Repo File Service");
 
-		SLocalRepo lRepo = new SLocalRepo(srepo, fileCache,false);
+		SRepoInfo srepo = lRepo.srepo;
 		CommitInfo commitInfo = new CommitInfo(lRepo,rfs);
 
 		if (!commitInfo.fNewCommit) {
-			LOG.info(String.format("repCommit found no new changes, Nothing to do"));
-			return;
+			LOG.info(String.format("repCommit found no new changes, Nothing to do prev commit=%d chash=%s",commitInfo.getCommitId(),commitInfo.cHash));
+			return commitInfo;
 		}
 
 		// We may want to check if anything change at all...
@@ -1021,14 +956,9 @@ public class RemoteRepoSync {
 		commitInfo.finalizeFsCommit();
 		
 		rfs.commitUpload(srepo,sci,commitInfo.getFileCommit(),commitInfo.listDel);
-		
-		
 
 		// Do the actual deletions by changing ownere..
 		// Use to delete
-
-		
-
 		// Update your local REP....
 		// BeechLCommit lcommit;
 
@@ -1036,6 +966,7 @@ public class RemoteRepoSync {
 		lRepo.chash = commitInfo.cHash;
 		lRepo.mapEntry = commitInfo.getAllEntry();
 		lRepo.commitLocalRepo(false);
+		return commitInfo;
 
 	}
 

@@ -115,7 +115,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		
 		public void repoGitPush() throws IOException{
 			IRepoFileService rfs = ServerRepoFileService.get();
-			RemoteRepoSync.repCommit(repo, fileProv, (props)->{
+			RemoteRepoSync.repCommit(lrepo, fileProv, (props)->{
 				props.put("message","SolderVaultProvider");
 			},rfs);
 		}
@@ -227,7 +227,7 @@ public class SolderVaultFactory implements IVaultFactory {
 					"tenant_id,int,1", "blob_fsid,long,1", "create_date,date,1", "info,string,0,3" });
 
 			stPrimaryKey = "id";
-			aUnique = new String[] { "repo_id,chash" };
+			aUnique = new String[] { "repo_id,prev_id,chash" };
 			aIndex = null;
 
 			tsCommit.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SCOMMIT_SEQ);
@@ -545,58 +545,58 @@ public class SolderVaultFactory implements IVaultFactory {
 					CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME, tenantId, schemaName, String.valueOf(aoId)) };
 		}
 		
-		public void refresh() throws IOException {
+		public synchronized void refresh() throws IOException {
 			SRepo srepo = selectRepoById(id, this);
 			if (srepo != this) {
 				throw new IOException("Unable to refresh lock id=" + id);
 			}
 		}
 
-		public String getId() {
+		public synchronized String getId() {
 			return id;
 		}
 
-		public String getName() {
+		public synchronized String getName() {
 			return getId();
 		}
 
-		public String getSchemaName() {
+		public synchronized String getSchemaName() {
 			return schemaName;
 		}
 
-		public int getTenantId() {
+		public synchronized int getTenantId() {
 			return tenantId;
 		}
 
-		public int getAoId() {
+		public synchronized int getAoId() {
 			return aoId;
 		}
 
-		public String getCommitDir() {
+		public synchronized String getCommitDir() {
 			return commitDir;
 		}
 
-		public String[] getExtensionToKeep() {
+		public synchronized String[] getExtensionToKeep() {
 			return aExtension;
 		}
 
-		public int getCommitId() {
+		public synchronized int getCommitId() {
 			return commitId;
 		}
 
-		public Date getCommitDate() {
+		public synchronized Date getCommitDate() {
 			return dateCommit;
 		}
 
-		public Date getChangeDate() {
+		public synchronized Date getChangeDate() {
 			return dateChange;
 		}
 
-		public Date getCreateDate() {
+		public synchronized Date getCreateDate() {
 			return dateCreate;
 		}
 
-		public Date getLastDate() {
+		public synchronized Date getLastDate() {
 			return dateUpdate;
 		}
 		
@@ -641,7 +641,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			});
 		}
 
-		public void updateChange(Date dateChange) throws IOException {
+		public synchronized void updateChange(Date dateChange) throws IOException {
 
 			Date dateChangeFinal = Objects.requireNonNull(dateChange);
 			Date dateUpdateNew = new Date();
@@ -674,7 +674,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		}
 
-		public void updateCommit(SCommit commit) throws IOException {
+		public synchronized void updateCommit(SCommit commit) throws IOException {
 
 			Objects.requireNonNull(commit);
 			
@@ -742,7 +742,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		}
 
-		public void repInit() throws IOException {
+		public synchronized void repInit() throws IOException {
 			Event.log(SEvent.SRepoSync, aoId, tenantId, (mb) -> {
 				mb.put("table", "srepo");
 				mb.put("id", id);
@@ -752,7 +752,20 @@ public class SolderVaultFactory implements IVaultFactory {
 			File fileLocalRepo = syncCache.ensureSyncFolder(id);
 			try {
 				IRepoFileService rfs = ServerRepoFileService.get();
-				RemoteRepoSync.repInit(this, fileLocalRepo,rfs);
+				
+				SLocalRepo lrepo = new SLocalRepo(this, fileLocalRepo,true);
+				Objects.requireNonNull(rfs,"Repo File Service");
+				if (getCommitId() > 0) {
+					// Repository has commits..
+					// Get the Latest..
+					LOG.info(String.format("Repo %s has commit; latest=%d (date=%s)", getId(), getCommitId(),
+							PrintUtils.print(getCommitDate())));
+					RemoteRepoSync.repoCheckout(lrepo,rfs);
+				} else {
+					LOG.info(String.format("Repo %s has no commits. Nothing to do", getId()));
+				}
+				
+				
 			} catch (Exception e) {
 				Event.log(SEvent.SRepoSyncError, aoId, tenantId, (mb) -> {
 					mb.put("table", "srepo`");
@@ -766,16 +779,20 @@ public class SolderVaultFactory implements IVaultFactory {
 		SCommit scommit;
 
 		public synchronized SCommit getLatestCommit() throws IOException {
+			
+			refresh();
+			
 			if (commitId <= 0) {
 				return null;
 			}
-
+			
 			if (scommit != null) {
 				if (scommit.getId() != this.commitId) {
 					scommit = null;
 				}
 			}
 			if (scommit == null) {
+				
 				scommit = selectCommitById(commitId);
 			}
 			Objects.requireNonNull(scommit, "scommit " + commitId);
