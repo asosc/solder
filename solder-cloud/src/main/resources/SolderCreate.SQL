@@ -1,4 +1,7 @@
+CREATE SEQUENCE srepo_seq START WITH 1 INCREMENT BY 1 NO CYCLE NO CACHE;
+
 CREATE TABLE srepo (
+	sid int NOT NULL,
 	id nvarchar(48) NOT NULL,
 	tschema nvarchar(16) NOT NULL,
 	tenant_id int NOT NULL,
@@ -11,13 +14,13 @@ CREATE TABLE srepo (
 	create_date datetime NOT NULL,
 	last_update datetime NOT NULL,
 	CONSTRAINT pk_srepo PRIMARY KEY (id) ON EeFileGroup,
-	CONSTRAINT uk_srepo UNIQUE(tschema,tenant_id,ao_id) ON EeFileGroup
+	CONSTRAINT uk1_srepo UNIQUE(tschema,tenant_id,ao_id) ON EeFileGroup,
+	CONSTRAINT uk2_srepo UNIQUE(sid) ON EeFileGroup
 ) ON EeFileGroup;
 
+
+
 CREATE SEQUENCE scommit_seq START WITH 1 INCREMENT BY 1 NO CYCLE NO CACHE;
-
-
-
 
 CREATE TABLE scommit (
 	id int NOT NULL,
@@ -34,3 +37,4 @@ CREATE TABLE scommit (
 	CONSTRAINT pk_scommit PRIMARY KEY (id) ON EeFileGroup,
 	CONSTRAINT uk_scommit UNIQUE(repo_id,prev_id,chash) ON EeFileGroup
 ) ON EeFileGroup;
+

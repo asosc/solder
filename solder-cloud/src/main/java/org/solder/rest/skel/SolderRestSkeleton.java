@@ -29,6 +29,7 @@ import org.solder.rest.client.RemoteRepoSync.SolderEntry;
 import org.solder.rest.client.SCommitInfo;
 import org.solder.rest.client.SolderRestOp;
 import org.solder.vsync.ServerRepoFileService;
+import org.solder.vsync.SolderSentryProvider;
 import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SolderVaultFactory.SCommit;
 import org.solder.vsync.SolderVaultFactory.SRepo;
@@ -42,6 +43,9 @@ import com.ee.rest.RestSkeletonState;
 import com.ee.session.SessionManager;
 import com.ee.session.db.EEvent;
 import com.ee.session.db.Event;
+import com.ee.session.db.RolePriv;
+import com.ee.session.db.RolePriv.Scope;
+import com.ee.session.db.SentryProvider;
 import com.ee.session.db.User;
 import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
@@ -107,6 +111,28 @@ public enum SolderRestSkeleton {
 	}
 	
 	
+	static void doSentryCheck(String op,SRepo repo,int tenantId) throws IOException {
+		SentryProvider prov = RolePriv.getSentryProvider(SentryProvider.SENTRY_ENIGMA);
+		User user = (User)SessionManager.getUser();
+		Objects.requireNonNull(user,"user");
+		
+		tenantId = repo!=null?repo.getTenantId():tenantId;
+		String objId = repo!=null?"repo "+repo.getId():"op:"+op;
+		ensureTenant(tenantId,user.getTenantId(),objId);
+		
+		boolean fThrow = false;
+		boolean fRole = prov.verifyRole(op, tenantId, Scope.SCOPE_ALL, -1, fThrow);
+		boolean fPriv = false;
+		if (repo!=null) {
+			fPriv = prov.verifyPrivilege(op, tenantId, repo.getSeqId(), fThrow);
+		}
+		boolean fAllow = fRole || fPriv;
+		LOG.info(String.format("SentryCheck: op=%s, fAllow=%s (fRole=%s,fPriv=%s)", op,fAllow,fRole,fPriv));
+		if (!fAllow) {
+			throw new RestException("Invalid object;");
+		}
+	}
+	
 	// Skeletons
 	static void doCreate(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
@@ -130,6 +156,7 @@ public enum SolderRestSkeleton {
 			
 						
 			Objects.requireNonNull(repo,"repo");
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,null,user.getTenantId());
 			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
 			refA.set(repo);
 		});
@@ -156,7 +183,7 @@ public enum SolderRestSkeleton {
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
 			repo.refresh();
-			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
+			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			refRepo.set(repo);
 		});
 
@@ -184,7 +211,8 @@ public enum SolderRestSkeleton {
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
 			//Verify Roles and Priv..
-			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
+			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
+			
 			refA.set(repo.getLatestCommit());
 		});
 
@@ -212,7 +240,7 @@ public enum SolderRestSkeleton {
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
 			//Verify Roles and Priv..
-			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
+			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			
 			String relPath = decoder.readString("rel_path");
 			long blobFsId = decoder.readLong("blob_fsid");
@@ -254,7 +282,8 @@ public enum SolderRestSkeleton {
 			commitId.setValue(repo.generateNewCommitId());
 			
 			//Verify Roles and Priv..
-			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
+			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
+
 		});
 
 		// Return
@@ -333,7 +362,7 @@ public enum SolderRestSkeleton {
 			Objects.requireNonNull(se,"Solder Entry!");
 			refA.set(se);
 			//Verify Roles and Priv..
-			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
+			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
 		});
 		
 		SRepo repo = refSRepo.get();
@@ -396,7 +425,7 @@ public enum SolderRestSkeleton {
 			refDelRelPaths.set(decoder.readStringArray("del_rel_paths"));
 			
 			//Verify Roles and Priv..
-			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
+			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
 		});
 		
 		SRepo repo = refSRepo.get();

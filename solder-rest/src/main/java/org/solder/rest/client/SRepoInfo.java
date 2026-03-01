@@ -12,6 +12,7 @@ import com.lnk.serializer.Encoder;
 
 public class SRepoInfo extends ERemote  {
 	
+	protected int sid;
 	protected String id, schemaName, commitDir;
 	protected String[] aExtension;
 	protected int tenantId, aoId, commitId;
@@ -23,6 +24,7 @@ public class SRepoInfo extends ERemote  {
 	
 
 	public void serialize(Encoder encoder) throws IOException {
+		encoder.writeInt("sid", sid);
 		encoder.writeString("id", id);
 		encoder.writeString("tschema", schemaName);
 		encoder.writeInt("tenant_id", tenantId);
@@ -37,6 +39,7 @@ public class SRepoInfo extends ERemote  {
 	}
 
 	public void deserialize(Decoder decoder) throws IOException {
+		sid = decoder.readInt("sid");
 		id = decoder.readString("id");
 		schemaName = decoder.readString("tschema");
 		tenantId = decoder.readInt("tenant_id");
@@ -51,7 +54,9 @@ public class SRepoInfo extends ERemote  {
 	}
 	
 	
-
+	public int getSeqId() {
+		return sid;
+	}
 	
 	public String getId() {
 		return id;
@@ -109,7 +114,7 @@ public class SRepoInfo extends ERemote  {
 		
 		SRepoInfo repoRefresh = SolderRestClient.getRepo(id, getClient());
 		Objects.requireNonNull(repoRefresh,"refresh repo");
-		if (!repoRefresh.getId().equals(id) || repoRefresh.getTenantId() != tenantId) {
+		if (!repoRefresh.getId().equals(id) || repoRefresh.getTenantId() != tenantId || repoRefresh.getSeqId()!=sid) {
 			throw new RestException("Error refreshing, obj mismatch");
 		}
 		

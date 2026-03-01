@@ -165,6 +165,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	}
 
 	static final String SREPO_TABLE = "srepo";
+	static final String SREPO_SEQ = "srepo_seq";
 	static final String SCOMMIT_TABLE = "scommit";
 	static final String SCOMMIT_SEQ = "scommit_seq";
 
@@ -176,6 +177,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		SQLDatabase dbFinal = Objects.requireNonNull(db, "db");
 		RunOnce.ensure(s_fInit, () -> {
 			reqQ = new RepQueries(dbFinal.getName(), dbFinal.getType());
+			SolderSentryProvider.init();
 		});
 	}
 
@@ -183,7 +185,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		SQLTableSchema tsRepo, tsCommit;
 
-		SQLQuery qRepoIns, qRepoSelId,qRepoSelUnique, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne;
+		SQLQuery qRepoIns, qRepoSelId,qRepoSelSid,qRepoSelUnique, qRepoSelSchema, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne,qRepoSeq;
 
 		SQLQuery qCommitIns, qCommitSelId, qCommitSelRepo, qCommitDelOne, qCommitSeq;
 
@@ -192,14 +194,14 @@ public class SolderVaultFactory implements IVaultFactory {
 			// (name,fieldType(canonicalName),[flags(0,1),nSpit])
 
 			tsRepo = new SQLTableSchema(SREPO_TABLE);
-			tsRepo.parseAndAdd(new String[] { "id,string(48),1", "tschema,string(16),1", "tenant_id,int,1",
+			tsRepo.parseAndAdd(new String[] { "sid,int,1","id,string(48),1", "tschema,string(16),1", "tenant_id,int,1",
 					"ao_id,int,1", "commit_dir,string,0", "ext_keep,string,1", "commit_id,int,1", "commit_date,date,1",
 					"change_date,date,1", "create_date,date,1", "last_update,date,1" });
 
 			String stPrimaryKey = "id";
-			String[] aUnique = new String[] { "tschema,tenant_id,ao_id" };
+			String[] aUnique = new String[] { "tschema,tenant_id,ao_id","sid" };
 			String[] aIndex = null;
-			tsRepo.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, null);
+			tsRepo.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SREPO_SEQ);
 			tsRepo.setReadOnly();
 			SQLTableSchema.register(tsRepo);
 
@@ -207,9 +209,12 @@ public class SolderVaultFactory implements IVaultFactory {
 			// to any
 			// supported database.
 			MSSQLUtil.getCreateTableScript(tsRepo);
+			MSSQLUtil.getCreateSequenceScript(SREPO_SEQ);
 
+			qRepoSeq = DriverUtil.createSequenceQuery(dbName, dbType, tsRepo, SREPO_SEQ);
 			qRepoIns = DriverUtil.createInsertQuery(dbName, dbType, tsRepo);
 			qRepoSelId = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "id", "ById");
+			qRepoSelSid = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "sid", "BySid");
 			qRepoSelUnique = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tschema,tenant_id,ao_id", "ByUnique");
 			qRepoSelSchema = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tschema", "BySchema");
 			qRepoUpdCommit = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "commit_id,commit_date,last_update",
@@ -251,13 +256,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	}
 
 	public static class SCommit extends SCommitInfo implements Comparable<SCommitInfo> {
-		int id,idPrev;
-
-		String chash, repoId,chashPrev;
-		long blobFsId;
-		int tenantId;
-		Date dateCreate;
-		Map<String, String> mapInfo;
+		
 
 		public SCommit() {
 		}
@@ -288,77 +287,8 @@ public class SolderVaultFactory implements IVaultFactory {
 			this.mapInfo = mapInfo;
 		}
 
-		public int compareTo(SCommit sc) {
-			// Natural order is based on id.
-			return id = sc.id;
-		}
-
-		public boolean equals(Object o) {
-			if (o instanceof SCommit sc) {
-				return id == sc.id;
-			} else {
-				return false;
-			}
-		}
+	
 		
-		
-
-		public void serialize(Encoder encoder) throws IOException {
-			encoder.writeInt("id", id);
-			encoder.writeString("repo_id", repoId);
-			encoder.writeString("chash", chash);
-			encoder.writeInt("prev_id", idPrev);
-			encoder.writeString("prev_chash", chashPrev);
-			encoder.writeInt("tenant_id", tenantId);
-			encoder.writeLong("blob_fsid", blobFsId);
-			encoder.writeDate("create_date", dateCreate);
-			encoder.writeProperties("info", mapInfo);
-		}
-
-		public void deserialize(Decoder decoder) throws IOException {
-
-			id = decoder.readInt("id");
-			repoId = decoder.readString("repo_id");
-			chash = decoder.readString("chash");
-			idPrev = decoder.readInt("prev_id");
-			chashPrev = decoder.readString("prev_chash");
-			tenantId = decoder.readInt("tenant_id");
-			blobFsId=decoder.readLong("blob_fsid");
-			dateCreate = decoder.readDate("create_date");
-			mapInfo = decoder.readProperties("info");
-		}
-
-		public int getId() {
-			return id;
-		}
-
-		public String getRepoId() {
-			return repoId;
-		}
-
-		public String getCHash() {
-			return chash;
-		}
-		
-		public int getPrevId() {
-			return idPrev;
-		}
-		
-		public String getPrevCHash() {
-			return chashPrev;
-		}
-
-		public int getTenantId() {
-			return tenantId;
-		}
-		
-		public long getBlobFsId() {
-			return blobFsId;
-		}
-		
-		void setBlobFsId(long blobFsId) {
-			this.blobFsId=blobFsId;
-		}
 		
 		public BlobFS getBlobFs() throws IOException{
 			if (blobFsId<=0) {
@@ -370,13 +300,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			return blobFs;
 		}
 
-		public Date getCreateDate() {
-			return dateCreate;
-		}
-
-		public Map<String, String> getInfo() {
-			return mapInfo;
-		}
+		
 
 		void insert() throws IOException {
 			// We get the transactions sqlTm.
@@ -539,10 +463,12 @@ public class SolderVaultFactory implements IVaultFactory {
 			dateUpdate = decoder.readDate("last_update");
 		}
 		*/
+		static final String KEY_SID="sid";
 
 		public String[] cacheKeys() {
 			return new String[] { CacheHelper.getKey(CacheHelper.KEY_ID, id),
-					CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME, tenantId, schemaName, String.valueOf(aoId)) };
+					CacheHelper.getKey(CacheHelper.KEY_TENANT_TYPE_NAME, tenantId, schemaName, String.valueOf(aoId)),
+					CacheHelper.getKey(KEY_SID, sid)};
 		}
 		
 		public synchronized void refresh() throws IOException {
@@ -550,6 +476,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			if (srepo != this) {
 				throw new IOException("Unable to refresh lock id=" + id);
 			}
+		}
+		
+		public synchronized int getSeqId() {
+			return sid;
 		}
 
 		public synchronized String getId() {
@@ -814,6 +744,13 @@ public class SolderVaultFactory implements IVaultFactory {
 
 	}
 	
+	public static SRepo getRepoBySeqId(int sid) throws IOException {
+		
+		String key = CacheHelper.getKey(SRepo.KEY_SID, sid);
+		return cacheRepo.getStoreIfAbsent(key, () -> selectRepoBySeqId(sid,null), (srepo) -> srepo.cacheKeys());
+
+	}
+	
 	
 	public static SRepo getRepoByUnique(String schemaName,int tenantId,int aoId) throws IOException {
 		String schemaNameFinal = Validator.require(schemaName, "schema name", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
@@ -828,6 +765,20 @@ public class SolderVaultFactory implements IVaultFactory {
 		SRepo srepoFinal = srepo != null ? srepo : new SRepo();
 		SQLTm.get().select(reqQ.qRepoSelId, (encoder) -> {
 			encoder.writeString("id", id);
+		}, (decoder) -> {
+			if (decoder.next()) {
+				srepoFinal.deserialize(decoder);
+				tref.set(srepoFinal);
+			}
+		}, null);
+		return tref.get();
+	}
+	
+	static SRepo selectRepoBySeqId(int sid,SRepo srepo) throws IOException {
+		TReference<SRepo> tref = new TReference<>();
+		SRepo srepoFinal = srepo != null ? srepo : new SRepo();
+		SQLTm.get().select(reqQ.qRepoSelSid, (encoder) -> {
+			encoder.writeInt("sid", sid);
 		}, (decoder) -> {
 			if (decoder.next()) {
 				srepoFinal.deserialize(decoder);

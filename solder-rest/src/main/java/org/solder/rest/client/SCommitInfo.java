@@ -53,7 +53,7 @@ public class SCommitInfo extends ERemote implements Comparable<SCommitInfo> {
 
 	public int compareTo(SCommitInfo sc) {
 		// Natural order is based on id.
-		return id = sc.id;
+		return id - sc.id;
 	}
 
 	public boolean equals(Object o) {
@@ -119,7 +119,7 @@ public class SCommitInfo extends ERemote implements Comparable<SCommitInfo> {
 		return blobFsId;
 	}
 	
-	void setBlobFsId(long blobFsId) {
+	public void setBlobFsId(long blobFsId) {
 		this.blobFsId=blobFsId;
 	}
 	
