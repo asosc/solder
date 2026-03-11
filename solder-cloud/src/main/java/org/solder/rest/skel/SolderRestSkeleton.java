@@ -34,8 +34,8 @@ import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SolderVaultFactory.SCommit;
 import org.solder.vsync.SolderVaultFactory.SRepo;
 
+import com.ee.ens.AbstractHttpServlet.SCall;
 import com.ee.ens.EnServlet;
-import com.ee.ens.EnServlet.SCall;
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp;
 import com.ee.rest.RestProcessor;
