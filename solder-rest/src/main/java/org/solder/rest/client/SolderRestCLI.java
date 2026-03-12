@@ -12,6 +12,7 @@ import org.apache.commons.logging.LogFactory;
 
 import com.aura.crypto.CryptoScheme;
 import com.ee.rest.RestException;
+import com.ee.rest.RestOp;
 import com.ee.rest.RestOp.ClientType;
 import com.ee.rest.RestOp.RestClient;
 import com.ee.rest.client.EnigmaRestClient;
@@ -112,7 +113,7 @@ public class SolderRestCLI  extends AbstractCLI {
 		
 		
 		
-		client = new RestClient(ClientType.HTTP,"http://localhost:8080");
+		client = new RestClient(ClientType.HTTP,"http://localhost:8080",RestOp.ENIGMA_SERVLET_URI);
 		String sessKey = EnigmaRestClient.login(EnigmaRestOp.AUTH_TYPE_ENIGMA,user,pwd,client);
 		LOG.info(String.format("Logged in; created session with key=%s",sessKey));
 		
