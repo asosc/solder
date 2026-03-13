@@ -14,10 +14,10 @@ import org.solder.rest.skel.SolderRestSkeleton;
 import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SyncLocalRepo;
 
-import com.ee.session.db.BackgroundTask;
 import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Event;
 import com.lnk.jdbc.SQLDatabase;
+import com.lnk.lucene.BackgroundTask;
 import com.lnk.lucene.RunOnce;
 
 public class SolderMain {

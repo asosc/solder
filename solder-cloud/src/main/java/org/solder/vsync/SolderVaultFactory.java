@@ -32,7 +32,6 @@ import com.beech.store.TVault;
 import com.ee.rest.RestException;
 import com.ee.session.SQLTm;
 import com.ee.session.db.Audit;
-import com.ee.session.db.BackgroundTask;
 import com.ee.session.db.EEvent;
 import com.ee.session.db.Event;
 import com.ee.session.db.Tenant;
@@ -49,9 +48,8 @@ import com.lnk.jdbc.MSSQLUtil;
 import com.lnk.jdbc.SQLDatabase;
 import com.lnk.jdbc.SQLQuery;
 import com.lnk.jdbc.SQLTableSchema;
+import com.lnk.lucene.BackgroundTask;
 import com.lnk.lucene.RunOnce;
-import com.lnk.serializer.Decoder;
-import com.lnk.serializer.Encoder;
 
 public class SolderVaultFactory implements IVaultFactory {
 
@@ -250,6 +248,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			SQLQuery.addToMap(qCommitIns, qCommitSelRepo, qCommitDelOne, qCommitSeq);
 		}
 	}
+	
+	static int generateSRepoId() throws IOException {
+		return (int) SQLTm.get().nextSequenceId(reqQ.qRepoSeq);
+	}
 
 	static int generateCommitId() throws IOException {
 		return (int) SQLTm.get().nextSequenceId(reqQ.qCommitSeq);
@@ -429,6 +431,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			dateChange = dateCreate;
 			// Create scache before you insert..
 			getProvider(false);
+			this.sid=generateSRepoId();
 			insert();
 		}
 		
@@ -560,12 +563,15 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		void insert() throws IOException {
 			// We get the transactions sqlTm.
+			if (this.sid<=0) {
+				throw new SolderException("SRepo Id not set");
+			}
 
 			SQLTm.get().executeOne(reqQ.qRepoIns, this::serialize, null);
 
 			// Add to the cache
 			cacheRepo.store(this, this::cacheKeys);
-			Audit.audit(SAudit.SRepo_Create, aoId, -1, tenantId, (cmb) -> {
+			Audit.audit(SAudit.SRepo_Create, sid, -1, tenantId, (cmb) -> {
 				cmb.put("id", id);
 				cmb.put("schema", schemaName);
 			});
@@ -589,14 +595,14 @@ public class SolderVaultFactory implements IVaultFactory {
 				this.dateChange = dateChangeFinal;
 				this.dateUpdate = dateUpdateNew;
 
-				Audit.audit(SAudit.SRepo_Update, aoId, -1, tenantId, (cmb) -> {
+				Audit.audit(SAudit.SRepo_Update, sid, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("op", "change_date");
 					cmb.putIfChanged("change_date", dateChangeFinal, dateChange);
 				});
 
 			} else {
-				Event.log(SEvent.DbUpdateFail, aoId, tenantId, (mb) -> {
+				Event.log(SEvent.DbUpdateFail, sid, tenantId, (mb) -> {
 					mb.put("table", "srepo");
 					mb.put("id", id);
 				});
@@ -632,7 +638,7 @@ public class SolderVaultFactory implements IVaultFactory {
 				
 			}, null);
 			if (i == 1) {
-				Audit.audit(SAudit.SRepo_Update, aoId, -1, tenantId, (cmb) -> {
+				Audit.audit(SAudit.SRepo_Update, sid, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("op", "rep_info");
 					cmb.putIfChanged("commit_id", commitIdNew, commitId);
@@ -644,7 +650,7 @@ public class SolderVaultFactory implements IVaultFactory {
 				this.dateUpdate = dateUpdateNew;
 
 			} else {
-				Event.log(SEvent.DbUpdateFail, aoId, tenantId, (mb) -> {
+				Event.log(SEvent.DbUpdateFail, sid, tenantId, (mb) -> {
 					mb.put("table", "srepo");
 					mb.put("id", id);
 					mb.put("commit_id", commitIdNew);
@@ -659,12 +665,12 @@ public class SolderVaultFactory implements IVaultFactory {
 			}, null);
 
 			if (i < 1) {
-				Event.log(EEvent.DbDeleteFail, aoId, tenantId, (mb) -> {
+				Event.log(EEvent.DbDeleteFail, sid, tenantId, (mb) -> {
 					mb.put("table", "srepo`");
 					mb.put("id", id);
 				});
 			} else {
-				Audit.audit(SAudit.SRepo_Delete, aoId, -1, tenantId, (cmb) -> {
+				Audit.audit(SAudit.SRepo_Delete, sid, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("schema", schemaName);
 				});
@@ -673,7 +679,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		}
 
 		public synchronized void repInit() throws IOException {
-			Event.log(SEvent.SRepoSync, aoId, tenantId, (mb) -> {
+			Event.log(SEvent.SRepoSync, sid, tenantId, (mb) -> {
 				mb.put("table", "srepo");
 				mb.put("id", id);
 			});
@@ -697,7 +703,7 @@ public class SolderVaultFactory implements IVaultFactory {
 				
 				
 			} catch (Exception e) {
-				Event.log(SEvent.SRepoSyncError, aoId, tenantId, (mb) -> {
+				Event.log(SEvent.SRepoSyncError, sid, tenantId, (mb) -> {
 					mb.put("table", "srepo`");
 					mb.put("id", id);
 					mb.put("error", PrintUtils.getStackTrace(e));

@@ -88,7 +88,7 @@ public class SolderRestCLI  extends AbstractCLI {
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create", 
-				"Git create. Params: fileLocalRepo repoId schemaName [tenant_id aoId]");
+				"Git create. Params: repoId schemaName [aoId]");
 		
 		mapGitOpsHelp.put("checkout",
 				"Git Checkout(same as clone,rebase). Params:");
