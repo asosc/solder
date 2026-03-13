@@ -60,6 +60,8 @@ public enum SolderRestSkeleton {
 
 	CREATE(SolderRestOp.CREATE,SolderRestSkeleton::doCreate),
 	GET(SolderRestOp.GET,SolderRestSkeleton::doGet),	
+	SEARCH(SolderRestOp.SEARCH,SolderRestSkeleton::doSearch),
+	DELETE(SolderRestOp.DELETE,SolderRestSkeleton::doDelete),
 	GET_LATEST_COMMIT(SolderRestOp.GET_LATEST_COMMIT,SolderRestSkeleton::doGetLatestCommit),
 	DOWNLOAD_FILE(SolderRestOp.DOWNLOAD_FILE,SolderRestSkeleton::doDownloadFile),
 	GEN_NEW_COMMIT_ID(SolderRestOp.GEN_NEW_COMMIT_ID,SolderRestSkeleton::doGenNewCommitId),
@@ -178,12 +180,75 @@ public enum SolderRestSkeleton {
 			scall.handleSession(decoder,null,false);
 			User user = (User)SessionManager.getUser();
 			
-			Set<String> params =decoder.getAllObjectFields();
 			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
 			repo.refresh();
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
+			refRepo.set(repo);
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeObject("ret", refRepo.get(),false);
+		});
+	}
+	
+	static void doSearch(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<List<SRepo>> ref = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			User user = (User)SessionManager.getUser();
+			
+			Set<String> params =decoder.getAllObjectFields();
+			
+			int tenantId = user.getTenantId();
+			String repoIdPattern = null;
+			String schemaPattern = null;
+			
+			if (params.contains("id")) {
+				repoIdPattern = decoder.readString("id");
+			}
+			if (params.contains("tschema")) {
+				schemaPattern = decoder.readString("tschema");
+			}
+			
+			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,null,tenantId);
+			
+			List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdPattern, schemaPattern);
+			ref.set(list);
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeList("ret", ref.get(),false);
+		});
+	}
+	
+	static void doDelete(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SRepo> refRepo = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			User user = (User)SessionManager.getUser();
+			
+			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			SRepo repo = SolderVaultFactory.getRepoById(repoId);
+			Objects.requireNonNull(repo,()->"repo "+repoId);
+			repo.refresh();
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
+			
+			repo.updateDelete();
+			
 			refRepo.set(repo);
 		});
 

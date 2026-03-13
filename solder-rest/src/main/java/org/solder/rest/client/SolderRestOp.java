@@ -12,6 +12,8 @@ public enum SolderRestOp implements RestOp {
 
 		CREATE("solcreate", SolderRestOp::autoboxSolder, false, false),
 		GET("solget", SolderRestOp::autoboxSolder, false, false),
+		SEARCH("solsrch",SolderRestOp::autoboxSolder,false,false),
+		DELETE("soldel",SolderRestOp::autoboxSolder,false,false),
 		GET_LATEST_COMMIT("solglc", SolderRestOp::autoboxSolder, false, false),
 		DOWNLOAD_FILE("soldf", SolderRestOp::autoboxSolder, false, true),
 		GEN_NEW_COMMIT_ID("solgnci", SolderRestOp::autoboxSolder, false, false),
@@ -23,9 +25,11 @@ public enum SolderRestOp implements RestOp {
 	// AutoBoxers...
 		public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {
 			return (encoder) -> {
-					RestOp.addIfAvailable(encoder,fnValue,Session_KEY,"repo_id","schema","ao_id","rel_path","blob_fsid");
+					RestOp.addIfAvailable(encoder,fnValue,Session_KEY,"id","tschema","ao_id","rel_path","blob_fsid");
 			};
 		}
+		
+		
 	
 	String op;
 	boolean fRequestStream, fResponseStream;

@@ -84,18 +84,32 @@ public class SolderRestCLI  extends AbstractCLI {
 
 	// ALL Handlers are here..
 
-	static final String[] git_Ops = { "create","checkout","push"};
+	
+	static final String[] git_Ops = { "create","checkout","push","init","status","search","delete"};
+	
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create", 
 				"Git create. Params: repoId schemaName [aoId]");
 		
+		mapGitOpsHelp.put("search", 
+				"Search Repo. Params: [repoIdPattern schemaNamePattern]");
+		mapGitOpsHelp.put("delete", 
+				"Delete Repo (Marks for deletion). Params: repoId");
+		
+		mapGitOpsHelp.put("init",
+				"Git init. Params:repoId");
+		
 		mapGitOpsHelp.put("checkout",
 				"Git Checkout(same as clone,rebase). Params:");
 		mapGitOpsHelp.put("push",
 				"Git Push(same as commit and push). Params:");
-		mapGitOpsHelp.put("init",
-				"Git init. Params:repoId");
+		mapGitOpsHelp.put("status",
+				"Git Status. Params:");
+		
+		
+		
+	
 	}
 	
 	private static RestClient client =null;
@@ -163,6 +177,37 @@ public class SolderRestCLI  extends AbstractCLI {
 				int aoId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
 				SRepoInfo srepoInfo =  SolderRestClient.createRepo(repoId,schemaName,aoId,client) ;
 				logConsole("id: "+repoId+"; schema="+schemaName+"{; rsRepo="+srepoInfo);
+				//gitCreate(fileCache,stId,schemaName,tenantId,aoId);
+			}
+			break;
+			
+			case "search":
+			{
+				
+				initSolder("SolderCLIRepoSearch",null,null);
+				
+				String repoIdPattern = nParam<args.length?args[nParam++]:"";
+				String schemaNamePattern =  nParam<args.length?args[nParam++]:"";
+				
+				SRepoInfo[] a =  SolderRestClient.searchRepo(repoIdPattern,schemaNamePattern,client) ;
+				
+				logConsole(String.format("Search for repo %s schema %s returned %d repos.",repoIdPattern,schemaNamePattern,a.length));
+				for (SRepoInfo repo : a) {
+					logConsole(String.format("\tRepo: %s",""+repo));
+				}
+				//gitCreate(fileCache,stId,schemaName,tenantId,aoId);
+			}
+			break;
+			
+			case "delete":
+			{
+				
+				initSolder("SolderCLIRepoDelete",null,null);
+				
+				String repoId = args[nParam++];
+				
+				SRepoInfo repo = SolderRestClient.deleteRepo(repoId, client);
+				logConsole(String.format("Deleted; repo(postDelete)=%s",repo.toString()));
 				//gitCreate(fileCache,stId,schemaName,tenantId,aoId);
 			}
 			break;

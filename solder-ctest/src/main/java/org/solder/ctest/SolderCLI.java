@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -89,17 +90,26 @@ public class SolderCLI  extends AbstractCLI {
 
 	// ALL Handlers are here..
 
-	static final String[] git_Ops = { "create","checkout","push"};
+	static final String[] git_Ops = { "create","checkout","push","init","status","search","delete"};
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create", 
 				"Git create. Params: fileLocalRepo repoId schemaName [tenant_id aoId]");
+		mapGitOpsHelp.put("search", 
+				"Search Repo. Params: repoIdPattern schemaNamePattern [tenant_id]");
+		mapGitOpsHelp.put("delete", 
+				"Delete Repo. Params: repoId");
+		
+		mapGitOpsHelp.put("init",
+				"Git init. Params:repoId");
+		
 		mapGitOpsHelp.put("checkout",
 				"Git Checkout(same as clone,rebase). Params:");
 		mapGitOpsHelp.put("push",
 				"Git Push(same as commit and push). Params:");
-		mapGitOpsHelp.put("init",
-				"Git init. Params:repoId");
+		
+		mapGitOpsHelp.put("status",
+				"Git Status. Params:");
 	}
 	
 	private static SolderGitClient gitClient = null;
@@ -176,6 +186,37 @@ public class SolderCLI  extends AbstractCLI {
 				} else {
 					logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
 				}
+				
+			}
+			break;
+			
+			case "search":
+			{
+				initSolder("SolderCLIGitSearch",null,null);
+				
+				String repoIdPattern = nParam<args.length?args[nParam++]:"";
+				String schemaNamePattern =  nParam<args.length?args[nParam++]:"";
+				int tenantId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
+				
+				List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdPattern, schemaNamePattern);
+				logConsole(String.format("Search for repo %s schema %s returned %d repos.",repoIdPattern,schemaNamePattern,list.size()));
+				for (SRepo repo : list) {
+					logConsole(String.format("\tRepo: %s",""+repo));
+				}
+			}
+			break;
+			
+			
+			case "delete":
+			{
+				initSolder("SolderCLIGitDelete",null,null);
+				String repoId = args[nParam++];
+				
+				SRepo repo = SolderVaultFactory.getRepoById(repoId);
+				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
+				repo.updateDelete();
+				
+				logConsole(String.format("Deleted; repo(postDelete)=%s",repo.toString()));
 				
 			}
 			break;

@@ -14,6 +14,7 @@ public class SRepoInfo extends ERemote  {
 	
 	protected int sid;
 	protected String id, schemaName, commitDir;
+	protected boolean fDeleted;
 	protected String[] aExtension;
 	protected int tenantId, aoId, commitId;
 	protected Date dateCommit, dateChange, dateCreate, dateUpdate;
@@ -29,6 +30,7 @@ public class SRepoInfo extends ERemote  {
 		encoder.writeString("tschema", schemaName);
 		encoder.writeInt("tenant_id", tenantId);
 		encoder.writeInt("ao_id", aoId);
+		encoder.writeBoolean("deleted", fDeleted);
 		encoder.writeString("commit_dir", commitDir);
 		encoder.writeStringArray("ext_keep", aExtension);
 		encoder.writeInt("commit_id", commitId);
@@ -44,6 +46,7 @@ public class SRepoInfo extends ERemote  {
 		schemaName = decoder.readString("tschema");
 		tenantId = decoder.readInt("tenant_id");
 		aoId = decoder.readInt("ao_id");
+		fDeleted = decoder.readBoolean("deleted");
 		commitDir = decoder.readString("commit_dir");
 		aExtension = decoder.readStringArray("ext_keep");
 		commitId = decoder.readInt("commit_id");
@@ -76,6 +79,10 @@ public class SRepoInfo extends ERemote  {
 
 	public int getAoId() {
 		return aoId;
+	}
+	
+	public boolean isDeleted() {
+		return fDeleted;
 	}
 
 	public String getCommitDir() {

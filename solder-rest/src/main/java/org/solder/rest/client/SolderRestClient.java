@@ -53,6 +53,47 @@ public class SolderRestClient {
 	}
 	
 	
+	public static SRepoInfo[] searchRepo(String repoIdPattern,String schemaPattern,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		if (repoIdPattern == null) {
+			repoIdPattern ="";
+		}
+		if (schemaPattern == null) {
+			schemaPattern ="";
+		}
+		
+		String repoIdPatternFinal = repoIdPattern;
+		String schemaPatternFinal = schemaPattern;
+		
+		TReference<SRepoInfo[]> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.SEARCH, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdPatternFinal);
+			encoder.writeString("tschema", schemaPatternFinal);
+		}, (decoder) -> {
+			ret.set(EnigmaRestClient.setClient(decoder.readObjectArray("ret", SRepoInfo.class), client));
+		});
+		return ret.get();
+	}
+	
+	
+	public static SRepoInfo deleteRepo(String repoId,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+		
+		
+		TReference<SRepoInfo> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.DELETE, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+		}, (decoder) -> {
+			ret.set(decoder.readObject("ret", SRepoInfo.class));
+		});
+		return ret.get();
+	}
+	
 	public static SCommitInfo  getLatestCommit(String repoId, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
