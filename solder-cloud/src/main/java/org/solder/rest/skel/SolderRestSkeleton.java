@@ -243,13 +243,23 @@ public enum SolderRestSkeleton {
 			
 			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
-			repo.refresh();
-			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
 			
-			repo.updateDelete();
+			if (repo!=null) {
+				Objects.requireNonNull(repo,()->"repo "+repoId);
+				repo.refresh();
+				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
+				repo.updateDelete();
+				refRepo.set(repo);
+			} else 	{
+				List<SRepo> list = SolderVaultFactory.getDeletedRepo(user.getTenantId(),repoId);
+				if (list!=null && list.size()>0) {
+					refRepo.set(list.get(0));
+				} else {
+					throw new RestException("Unable to find repo  "+repoId);
+				}
+			}
 			
-			refRepo.set(repo);
+			
 		});
 
 		// Return

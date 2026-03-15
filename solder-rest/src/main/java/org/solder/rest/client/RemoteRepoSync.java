@@ -769,7 +769,7 @@ public class RemoteRepoSync {
 		int lcommitId = lrepo.getCommitId();
 		LOG.info(String.format("Repo %s has commit; latest=%d (date=%s) current=%d", srepo.getId(), srepo.getCommitId(),
 				PrintUtils.print(srepo.getCommitDate()),lcommitId));
-		if (commitId <=0 || lcommitId==commitId) {
+		if (commitId <=0) {
 			//Nothing to do..
 			return;
 		}

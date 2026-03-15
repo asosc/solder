@@ -912,6 +912,23 @@ public class SolderVaultFactory implements IVaultFactory {
 	 *
 	 */
 	
+	private static SQLQuery getRepoSearch(boolean fIdPattern,boolean fSchemaPattern,boolean fNonDeletedRepo) throws IOException {
+		SQLQuery q=repQ.qRepoSelSid;
+		
+		String stInitial = fNonDeletedRepo?"tenant_id,deleted":"tenant_id";
+		
+		SQLQuery qRepoSearch = DriverUtil.createSelectQuery(q.getDBName(), q.getType(), repQ.tsRepo,
+				stInitial, "ByTenantSearch",(sb)->{
+					if (fIdPattern) {
+						sb.append(" AND id like ?");
+					}
+					if (fSchemaPattern) {
+						sb.append(" AND tschema like ?");
+					}
+				},null);
+		return qRepoSearch;
+	}
+	
 	public static List<SRepo> searchRepo(int tenantId,String idPattern, String schemaPattern) throws IOException {
 		
 		boolean fIdPattern = !StringUtils.isEmpty(idPattern);
@@ -922,17 +939,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			return selectByTenant(tenantId);
 		}
 		
-		SQLQuery q=repQ.qRepoSelSid;
-		
-		SQLQuery qRepoSearch = DriverUtil.createSelectQuery(q.getDBName(), q.getType(), repQ.tsRepo,
-				"tenant_id,deleted", "ByTenantSearch",(sb)->{
-					if (fIdPattern) {
-						sb.append(" AND id like ?");
-					}
-					if (fSchemaPattern) {
-						sb.append(" AND tschema like ?");
-					}
-				},null);
+		SQLQuery qRepoSearch = getRepoSearch(fIdPattern,fSchemaPattern,true); 
 		
 		List<SRepo> list = new ArrayList<>();
 		SQLTm.get().select(qRepoSearch, (encoder) -> {
@@ -944,6 +951,27 @@ public class SolderVaultFactory implements IVaultFactory {
 			if (fSchemaPattern) {
 				encoder.writeString("tschema", SQLUtil.replaceWild(schemaPattern));
 			}
+		}, (decoder) -> {
+			
+			while (decoder.next()) {
+				SRepo srepo = new SRepo();
+				srepo.deserialize(decoder);
+				list.add(srepo);
+			}
+		},null);
+		return list;
+	}
+	
+	public static List<SRepo> getDeletedRepo(int tenantId,String id) throws IOException {
+		String idPattern = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+		
+		SQLQuery qRepoSearch = getRepoSearch(true,false,false); 
+		
+		List<SRepo> list = new ArrayList<>();
+		SQLTm.get().select(qRepoSearch, (encoder) -> {
+			encoder.writeInt("tenant_id", tenantId);
+			encoder.writeString("id", SQLUtil.replaceWild(idPattern+"_*"));
+			
 		}, (decoder) -> {
 			
 			while (decoder.next()) {
