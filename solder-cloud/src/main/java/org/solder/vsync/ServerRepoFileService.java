@@ -33,6 +33,7 @@ import org.solder.vsync.SolderVaultFactory.SCommit;
 import org.solder.vsync.SolderVaultFactory.SRepo;
 
 import com.aura.crypto.CryptoScheme;
+import com.ee.rest.RestOp.RestClient;
 import com.ee.session.SessionManager;
 import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
@@ -50,6 +51,11 @@ public class ServerRepoFileService  implements IRepoFileService {
 	
 	
 	private ServerRepoFileService() {}
+	
+	
+	public RestClient getRestClient() throws IOException {
+		throw new SolderException("Server side should not be asking for RestClient.!");
+	}
 	
 	SRepo getSRepo(SRepoInfo srepoInfo) throws IOException {
 		Objects.requireNonNull(srepoInfo,"srepo");

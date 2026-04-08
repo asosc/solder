@@ -7,13 +7,13 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.ee.rest.RestException;
-import com.ee.rest.client.EnigmaRestObjects.ERemote;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
+import com.lnk.serializer.ISerializable;
 
-public class SCommitInfo extends ERemote implements Comparable<SCommitInfo> {
+public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 	protected int id,idPrev;
 
 	protected String chash, repoId,chashPrev;

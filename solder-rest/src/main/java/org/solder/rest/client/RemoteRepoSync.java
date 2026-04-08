@@ -41,6 +41,7 @@ import com.beech.bfs.BeechLCommit;
 import com.beech.bfs.BeechLDirectory;
 import com.beech.bfs.Mode;
 import com.ee.rest.RestException;
+import com.ee.rest.RestOp.RestClient;
 import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.RelPath;
@@ -546,7 +547,7 @@ public class RemoteRepoSync {
 			Objects.requireNonNull(srepo,"srepo");
 			
 			//Refresh just before we commit.
-			srepo.refresh();
+			srepo.refresh(rfs.getRestClient());
 			
 			//Match ids first..
 			Consumer<MapBuilder> cEventMb = (mb)->{
@@ -740,6 +741,8 @@ public class RemoteRepoSync {
 	
 	
 	public static interface IRepoFileService {
+		
+		public RestClient getRestClient() throws IOException;
 		
 		public SRepoInfo getRepo(String repoId) throws IOException;
 		

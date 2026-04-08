@@ -33,7 +33,7 @@ public class SolderRestClient {
 			encoder.writeString("tschema", schemaName);
 			encoder.writeInt("ao_id", aoId);
 		}, (decoder) -> {
-			ret.set(EnigmaRestClient.setClient(decoder.readObject("ret", SRepoInfo.class), client));
+			ret.set(decoder.readObject("ret", SRepoInfo.class));
 		});
 		return ret.get();
 	}
@@ -47,7 +47,7 @@ public class SolderRestClient {
 			// You dont have to send this if it is false.
 			encoder.writeString("id", repoId);
 		}, (decoder) -> {
-			ret.set(EnigmaRestClient.setClient(decoder.readObject("ret", SRepoInfo.class), client));
+			ret.set(decoder.readObject("ret", SRepoInfo.class));
 		});
 		return ret.get();
 	}
@@ -71,7 +71,7 @@ public class SolderRestClient {
 			encoder.writeString("id", repoIdPatternFinal);
 			encoder.writeString("tschema", schemaPatternFinal);
 		}, (decoder) -> {
-			ret.set(EnigmaRestClient.setClient(decoder.readObjectArray("ret", SRepoInfo.class), client));
+			ret.set(decoder.readObjectArray("ret", SRepoInfo.class));
 		});
 		return ret.get();
 	}
@@ -102,7 +102,7 @@ public class SolderRestClient {
 			// You dont have to send this if it is false.
 			encoder.writeString("id", repoId);
 		}, (decoder) -> {
-			ret.set(EnigmaRestClient.setClient(decoder.readObject("ret", SCommitInfo.class), client));
+			ret.set(decoder.readObject("ret", SCommitInfo.class));
 		});
 		return ret.get();
 	}
@@ -131,7 +131,7 @@ public class SolderRestClient {
 			encoder.writeLong("blob_fsid", blobFsId);
 			
 		},null, (decoder) -> {
-			SCommitInfo commitInfo = EnigmaRestClient.setClient(decoder.readObject("ret", SCommitInfo.class), client);
+			SCommitInfo commitInfo = decoder.readObject("ret", SCommitInfo.class);
 			if (cCommitInfo != null) {
 				cCommitInfo.accept(commitInfo);
 			}

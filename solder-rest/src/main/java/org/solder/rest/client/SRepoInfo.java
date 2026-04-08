@@ -5,12 +5,13 @@ import java.util.Date;
 import java.util.Objects;
 
 import com.ee.rest.RestException;
-import com.ee.rest.client.EnigmaRestObjects.ERemote;
+import com.ee.rest.RestOp.RestClient;
 import com.lnk.lucene.record.RecordUtil;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
+import com.lnk.serializer.ISerializable;
 
-public class SRepoInfo extends ERemote  {
+public class SRepoInfo implements ISerializable  {
 	
 	protected int sid;
 	protected String id, schemaName, commitDir;
@@ -117,9 +118,9 @@ public class SRepoInfo extends ERemote  {
 		return RecordUtil.printJson(this, false);
 	}
 	
-	public void refresh() throws IOException {
+	public void refresh(RestClient rc) throws IOException {
 		
-		SRepoInfo repoRefresh = SolderRestClient.getRepo(id, getClient());
+		SRepoInfo repoRefresh = SolderRestClient.getRepo(id, rc);
 		Objects.requireNonNull(repoRefresh,"refresh repo");
 		if (!repoRefresh.getId().equals(id) || repoRefresh.getTenantId() != tenantId || repoRefresh.getSeqId()!=sid) {
 			throw new RestException("Error refreshing, obj mismatch");

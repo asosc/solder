@@ -17,7 +17,6 @@ import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
 import org.solder.rest.client.RemoteRepoSync.SolderEntry;
 
 import com.ee.rest.RestOp.RestClient;
-import com.ee.rest.client.EnigmaRestObjects.ERemote;
 import com.jnk.util.TReference;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
@@ -34,7 +33,7 @@ public class RestRepoFileService implements IRepoFileService {
 		this.client = Objects.requireNonNull(client,"client");
 	}
 	
-	RestClient getRestClient(ERemote remote) throws IOException {
+	public RestClient getRestClient() throws IOException {
 		return client;
 	}
 	
@@ -46,7 +45,7 @@ public class RestRepoFileService implements IRepoFileService {
 	public SCommitInfo getLatestCommit(SRepoInfo srepoInfo) throws IOException {
 		//Got to
 		Objects.requireNonNull(srepoInfo,"Repo Info");
-		return SolderRestClient.getLatestCommit(srepoInfo.getId(), getRestClient(srepoInfo));
+		return SolderRestClient.getLatestCommit(srepoInfo.getId(), getRestClient());
 	}
 	
 	public File downloadFile(SRepoInfo srepoInfo,String relPath,long blobFsId) throws IOException {
@@ -66,7 +65,7 @@ public class RestRepoFileService implements IRepoFileService {
 			os = new FileOutputStream(fileTmp);
 			fError =true;
 			OutputStream osFinal = os;
-			SolderRestClient.downloadFile(srepoInfo.getId(),relPath,blobFsId,(sci)->tref.set(sci),()->osFinal,getRestClient(srepoInfo));
+			SolderRestClient.downloadFile(srepoInfo.getId(),relPath,blobFsId,(sci)->tref.set(sci),()->osFinal,getRestClient());
 			os.close();
 			fError = false;
 			return fileTmp;
@@ -80,7 +79,7 @@ public class RestRepoFileService implements IRepoFileService {
 	
 	public int generateNewCommitId(SRepoInfo srepoInfo) throws IOException {
 		Objects.requireNonNull(srepoInfo,"Repo Info");
-		return SolderRestClient.getNewCommitId(srepoInfo.getId(), getRestClient(srepoInfo));
+		return SolderRestClient.getNewCommitId(srepoInfo.getId(), getRestClient());
 	}
 	
 	public SCommitInfo createSCommit(SRepoInfo srepoInfo, String chash, Map<String, String> mapInfo, int commitId) throws IOException {
@@ -101,7 +100,7 @@ public class RestRepoFileService implements IRepoFileService {
 		try {
 			is = new FileInputStream(fileRep);
 			InputStream isFinal = is;
-			long blobId = SolderRestClient.uploadFile(srepoInfo.getId(),se,()->isFinal, getRestClient(srepoInfo));
+			long blobId = SolderRestClient.uploadFile(srepoInfo.getId(),se,()->isFinal, getRestClient());
 			se.setBlobId(blobId);
 		} finally {
 			IOUtils.closeQuietly(is);
@@ -120,7 +119,7 @@ public class RestRepoFileService implements IRepoFileService {
 			is = new FileInputStream(fileCommit);
 			
 			InputStream isFinal = is;
-			long blobFsId = SolderRestClient.commitUpload(srepoInfo.getId(), sci,digest,listDelEntryRelPath,()->isFinal, getRestClient(srepoInfo));
+			long blobFsId = SolderRestClient.commitUpload(srepoInfo.getId(), sci,digest,listDelEntryRelPath,()->isFinal, getRestClient());
 			sci.setBlobFsId(blobFsId);
 
 		} finally {
