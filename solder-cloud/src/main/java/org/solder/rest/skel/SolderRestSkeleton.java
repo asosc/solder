@@ -183,7 +183,7 @@ public enum SolderRestSkeleton {
 			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
-			repo.refresh();
+			repo.refresh(null);
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			refRepo.set(repo);
 		});
@@ -246,7 +246,7 @@ public enum SolderRestSkeleton {
 			
 			if (repo!=null) {
 				Objects.requireNonNull(repo,()->"repo "+repoId);
-				repo.refresh();
+				repo.refresh(null);
 				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
 				repo.updateDelete();
 				refRepo.set(repo);

@@ -57,6 +57,7 @@ public class ServerRepoFileService  implements IRepoFileService {
 		throw new SolderException("Server side should not be asking for RestClient.!");
 	}
 	
+	
 	SRepo getSRepo(SRepoInfo srepoInfo) throws IOException {
 		Objects.requireNonNull(srepoInfo,"srepo");
 		return (SRepo)srepoInfo;

@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.Date;
 import java.util.Objects;
 
+import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
+
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp.RestClient;
 import com.lnk.lucene.record.RecordUtil;
@@ -118,9 +120,9 @@ public class SRepoInfo implements ISerializable  {
 		return RecordUtil.printJson(this, false);
 	}
 	
-	public void refresh(RestClient rc) throws IOException {
+	public void refresh(IRepoFileService rfs) throws IOException {
 		
-		SRepoInfo repoRefresh = SolderRestClient.getRepo(id, rc);
+		SRepoInfo repoRefresh = SolderRestClient.getRepo(id, rfs.getRestClient());
 		Objects.requireNonNull(repoRefresh,"refresh repo");
 		if (!repoRefresh.getId().equals(id) || repoRefresh.getTenantId() != tenantId || repoRefresh.getSeqId()!=sid) {
 			throw new RestException("Error refreshing, obj mismatch");

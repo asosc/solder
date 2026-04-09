@@ -547,7 +547,8 @@ public class RemoteRepoSync {
 			Objects.requireNonNull(srepo,"srepo");
 			
 			//Refresh just before we commit.
-			srepo.refresh(rfs.getRestClient());
+			
+			srepo.refresh(rfs);
 			
 			//Match ids first..
 			Consumer<MapBuilder> cEventMb = (mb)->{

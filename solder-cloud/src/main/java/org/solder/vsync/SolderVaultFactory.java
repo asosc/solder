@@ -493,7 +493,8 @@ public class SolderVaultFactory implements IVaultFactory {
 					CacheHelper.getKey(KEY_SID, sid)};
 		}
 		
-		public synchronized void refresh() throws IOException {
+		public synchronized void refresh(IRepoFileService rfs) throws IOException {
+			//rfs is ignored as this is a server object.
 			SRepo srepo = selectRepoById(id, this);
 			if (srepo != this) {
 				throw new IOException("Unable to refresh lock id=" + id);
@@ -792,7 +793,8 @@ public class SolderVaultFactory implements IVaultFactory {
 
 		public synchronized SCommit getLatestCommit() throws IOException {
 			
-			refresh();
+			//we can even send null as the parameter is ignored.
+			refresh(null);
 			
 			if (commitId <= 0) {
 				return null;
