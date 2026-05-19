@@ -208,19 +208,19 @@ public enum SolderRestSkeleton {
 			Set<String> params =decoder.getAllObjectFields();
 			
 			int tenantId = user.getTenantId();
-			String repoIdPattern = null;
-			String schemaPattern = null;
+			String repoIdWild = null;
+			String schemaWild = null;
 			
 			if (params.contains("id")) {
-				repoIdPattern = decoder.readString("id");
+				repoIdWild = decoder.readString("idWild");
 			}
 			if (params.contains("tschema")) {
-				schemaPattern = decoder.readString("tschema");
+				schemaWild = decoder.readString("tschemaWild");
 			}
 			
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,null,tenantId);
 			
-			List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdPattern, schemaPattern);
+			List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdWild, schemaWild);
 			ref.set(list);
 		});
 

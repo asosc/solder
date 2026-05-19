@@ -37,6 +37,12 @@
 			<version>${beech.version}</version>
 		</dependency>
 		
+		<dependency>
+			<groupId>com.ee.enigma</groupId>
+			<artifactId>enigma-junit</artifactId>
+			<version>${enigma.version}</version>
+		</dependency>
+		
 
 	</dependencies>
 

@@ -53,23 +53,14 @@ public class SolderRestClient {
 	}
 	
 	
-	public static SRepoInfo[] searchRepo(String repoIdPattern,String schemaPattern,RestClient client) throws IOException {
+	public static SRepoInfo[] searchRepo(String repoIdWild,String schemaWild,RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
-		if (repoIdPattern == null) {
-			repoIdPattern ="";
-		}
-		if (schemaPattern == null) {
-			schemaPattern ="";
-		}
-		
-		String repoIdPatternFinal = repoIdPattern;
-		String schemaPatternFinal = schemaPattern;
-		
+
 		TReference<SRepoInfo[]> ret = new TReference<>();
 		client.doRestCall(SolderRestOp.SEARCH, (encoder) -> {
 			// You dont have to send this if it is false.
-			encoder.writeString("id", repoIdPatternFinal);
-			encoder.writeString("tschema", schemaPatternFinal);
+			encoder.writeString("idWild", repoIdWild);
+			encoder.writeString("tschemaWild", schemaWild);
 		}, (decoder) -> {
 			ret.set(decoder.readObjectArray("ret", SRepoInfo.class));
 		});

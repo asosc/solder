@@ -931,27 +931,27 @@ public class SolderVaultFactory implements IVaultFactory {
 		return qRepoSearch;
 	}
 	
-	public static List<SRepo> searchRepo(int tenantId,String idPattern, String schemaPattern) throws IOException {
+	public static List<SRepo> searchRepo(int tenantId,String idWild, String schemaWild) throws IOException {
 		
-		boolean fIdPattern = !StringUtils.isEmpty(idPattern);
-		boolean fSchemaPattern = !StringUtils.isEmpty(schemaPattern);
+		boolean fIdWild = !StringUtils.isEmpty(idWild);
+		boolean fSchemaWild = !StringUtils.isEmpty(schemaWild);
 		
-		if (!fIdPattern && !fSchemaPattern) {
+		if (!fIdWild && !fSchemaWild) {
 			//You want everything for tenantId...
 			return selectByTenant(tenantId);
 		}
 		
-		SQLQuery qRepoSearch = getRepoSearch(fIdPattern,fSchemaPattern,true); 
+		SQLQuery qRepoSearch = getRepoSearch(fIdWild,fSchemaWild,true); 
 		
 		List<SRepo> list = new ArrayList<>();
 		SQLTm.get().select(qRepoSearch, (encoder) -> {
 			encoder.writeInt("tenant_id", tenantId);
 			encoder.writeBoolean("deleted", false);
-			if (fIdPattern) {
-				encoder.writeString("id", SQLUtil.replaceWild(idPattern));
+			if (fIdWild) {
+				encoder.writeString("id", SQLUtil.replaceWild(idWild));
 			}
-			if (fSchemaPattern) {
-				encoder.writeString("tschema", SQLUtil.replaceWild(schemaPattern));
+			if (fSchemaWild) {
+				encoder.writeString("tschema", SQLUtil.replaceWild(schemaWild));
 			}
 		}, (decoder) -> {
 			
