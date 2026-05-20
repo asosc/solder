@@ -113,12 +113,12 @@ public class ServerRepoFileService  implements IRepoFileService {
 	}
 	
 	public void uploadFile(SRepoInfo srepoInfo,SolderEntry se) throws IOException {
-		String cgName = SolderMain.getSolderContainerGroupName();
-		ContainerGroup cg = ContainerGroup.get(cgName);
+		
+		ContainerGroup cg = SolderMain.getSolderCg();
+		Objects.requireNonNull(cg,()->SolderMain.SOLDER_CGREG_NAME+" registry setting");
 		
 		SRepo srepo = getSRepo(srepoInfo);
 
-		Objects.requireNonNull(cg, " cg " + cgName);
 		MessageDigest md = RemoteRepoSync.tlMessageDigest.get();
 		md.reset();
 		CryptoScheme cs = CryptoScheme.getDefault();
@@ -174,9 +174,8 @@ public class ServerRepoFileService  implements IRepoFileService {
 	
 	public void commitUpload(SRepoInfo srepoInfo,SCommitInfo sci,File fileCommit,List<String> listDelEntryRelPath) throws IOException {
 		
-		String cgName = SolderMain.getSolderContainerGroupName();
-		ContainerGroup cg = ContainerGroup.get(cgName);
-		Objects.requireNonNull(cg, " cg " + cgName);
+		ContainerGroup cg = SolderMain.getSolderCg();
+		Objects.requireNonNull(cg,()->SolderMain.SOLDER_CGREG_NAME+" registry setting");
 		
 		
 		SRepo srepo = getSRepo(srepoInfo);

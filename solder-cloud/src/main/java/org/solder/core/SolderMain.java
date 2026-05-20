@@ -4,11 +4,14 @@ import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.StopWatch;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nimbo.azure.AzureBlobProvider;
+import org.nimbo.blobs.CGRegistry;
 import org.nimbo.blobs.ContainerGroup;
 import org.solder.rest.skel.SolderRestSkeleton;
 import org.solder.vsync.SolderVaultFactory;
@@ -27,7 +30,18 @@ public class SolderMain {
 	static AtomicBoolean s_fInit = new AtomicBoolean(false);
 	static final int CACHE_REFRESH_SECONDS = (int) TimeUnit.MINUTES.toSeconds(10);
 	
-	static String SOLDER_CONTAINER_GROUP = "drink";
+	public static String SOLDER_CGREG_NAME = "solder";
+	
+	
+	private static final AtomicReference<ContainerGroup> arSolderCg = new AtomicReference<>();
+	
+	
+	
+	public static ContainerGroup getSolderCg() {
+		return arSolderCg.get();
+	}
+	
+
 	
 	public static void init() throws IOException {
 		
@@ -43,6 +57,20 @@ public class SolderMain {
 			new SolderVaultFactory();
 			SolderVaultFactory.init(dbFinal);
 			SyncLocalRepo.initDefault();
+			
+			CGRegistry cgReg = CGRegistry.getByName(SOLDER_CGREG_NAME);
+			if (cgReg == null) {
+				//Create one...
+				cgReg = new CGRegistry(SOLDER_CGREG_NAME,"");
+			}
+			String stCg  = cgReg.getGroup();
+			if (!StringUtils.isEmpty(stCg)) {
+				ContainerGroup cg = ContainerGroup.get(stCg);
+				LOG.info(String.format("Solder CgRegistry %s -> Found Conainer Group %s info=%s",cgReg.getName(),cgReg.getGroup(),""+cg));
+				if (cg != null) {
+					arSolderCg.set(cg);
+				}
+			}
 			
 			// Load everything once...
 			syncObjects();
@@ -63,25 +91,23 @@ public class SolderMain {
 		});
 	}
 	
-	public static String getSolderContainerGroupName() {
-		return SOLDER_CONTAINER_GROUP;
-	}
 	
-	public static void setSolderContainerGroup(ContainerGroup cg) throws IOException{
-		Objects.requireNonNull(cg,"container group");
-		String prev = SOLDER_CONTAINER_GROUP;
-		LOG.info(String.format("Setting Solder Container Group as %s (prev=%s)", cg.getName(),prev));
-		SOLDER_CONTAINER_GROUP = cg.getName();
-		
-		Event.log(SEvent.SolderSetContinerGroup, -1, -1, (mb) -> {
-			mb.put("cg", cg.getName());
-			mb.put("cg.prev", prev);
-		});
-	}
 	
 	static void syncObjects() throws IOException {
-		//We removed what we had..
 		
+		CGRegistry cgReg = CGRegistry.getByName(SOLDER_CGREG_NAME);
+		if (cgReg == null) {
+			//Create one...
+			cgReg = new CGRegistry(SOLDER_CGREG_NAME,"");
+		}
+		String stCg  = cgReg.getGroup();
+		if (!StringUtils.isEmpty(stCg)) {
+			ContainerGroup cg = ContainerGroup.get(stCg);
+			LOG.info(String.format("Solder CgRegistry %s -> Found Conainer Group %s info=%s",cgReg.getName(),cgReg.getGroup(),""+cg));
+			if (cg != null) {
+				arSolderCg.set(cg);
+			}
+		}
 		
 	}
 
