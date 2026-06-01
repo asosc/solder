@@ -100,15 +100,29 @@ public enum SolderRestSkeleton {
 
 	}
 	
+	static boolean crossTenantCheck() throws IOException {
+		SentryProvider prov = RolePriv.getSentryProvider(SentryProvider.SENTRY_ENIGMA);
+		User user = (User) SessionManager.getUser();
+		Objects.requireNonNull(user, "user");
+
+		return prov.verifyRole(SentryProvider.NAMEDOP_ADMIN, user.getTenantId(), Scope.SCOPE_ALL, -1, false);
+	}
+	
 	static void ensureTenant(int resourceTenantId,int userTenantId, String objId) throws IOException {
+		//Cross tenant is availabel..
+		
 		if (resourceTenantId != userTenantId ) {
-			Event.log(EEvent.Security_Warning, resourceTenantId, resourceTenantId, (mb) -> {
-				mb.put("obj_id", objId);
-				mb.put("obj_tenant_id", resourceTenantId);
-				mb.put("user_tenant_id", userTenantId);
-			});
-			LOG.error(String.format("ensureTenant error; resTenantId=%d, userTenantId=%d objId=%s", resourceTenantId,userTenantId,objId));
-			throw new RestException("Invalid object;");
+			if (!crossTenantCheck()) {
+				Event.log(EEvent.Security_Warning, resourceTenantId, resourceTenantId, (mb) -> {
+					mb.put("obj_id", objId);
+					mb.put("obj_tenant_id", resourceTenantId);
+					mb.put("user_tenant_id", userTenantId);
+				});
+				LOG.error(String.format("ensureTenant error; resTenantId=%d, userTenantId=%d objId=%s", resourceTenantId,userTenantId,objId));
+				throw new RestException("Invalid object;");
+			} else {
+				LOG.info("Cross tenant check passed!");
+			}
 		}
 	}
 	

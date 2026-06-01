@@ -4,6 +4,8 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 
 import org.apache.commons.cli.Option;
@@ -12,11 +14,8 @@ import org.apache.commons.logging.LogFactory;
 
 import com.aura.crypto.CryptoScheme;
 import com.ee.rest.RestException;
-import com.ee.rest.RestOp;
-import com.ee.rest.RestOp.ClientType;
 import com.ee.rest.RestOp.RestClient;
-import com.ee.rest.client.EnigmaRestClient;
-import com.ee.rest.client.EnigmaRestOp;
+import com.ee.rest.client.ECred;
 import com.jnk.junit.AbstractCLI;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
@@ -34,6 +33,11 @@ public class SolderRestCLI  extends AbstractCLI {
 
 		options.addOption(
 				new Option("g", "git", true, String.format("Git: op opParams\r\n%s", Arrays.toString(git_Ops))));
+		
+		options.addOption(
+				new Option("c", "cred", true, String.format("Cred File")));
+		
+		
 	
 
 	}
@@ -43,13 +47,23 @@ public class SolderRestCLI  extends AbstractCLI {
 		
 		TempFiles.initDefault();
 	}
+	
+	File fileCred = null;
 
 	public boolean doRunMain() throws Exception {
 
 		init();
+		
+		
 
 		String[] args = cline.getArgs();
 		int nParam = 0;
+		
+		if (cline .hasOption("cred")) {
+			System.out.println("Git command");
+			fileCred = new File(cline.getOptionValue("cred"));
+			Validator.checkFile(fileCred,"Cred file");
+		}
 
 		if (cline.hasOption("git")) {
 			System.out.println("Git command");
@@ -118,19 +132,21 @@ public class SolderRestCLI  extends AbstractCLI {
 	void initSolder(String stCmd,File fileCache,String repoId) throws IOException {
 		
 		
+		File fileEc = this.fileCred;
+		if (fileEc == null) {
+			//Use the one pytest (if available..
+			Map<String, String> mapEnv = System.getenv();
+			String stProxyInstallRoot = mapEnv.get("BPROXY_INSTALL");
+			File filePyConfig = new File(stProxyInstallRoot,"pyconfig");
+			Validator.checkDir(filePyConfig, false, "pyConfig Config Root");
+			fileEc = new File(filePyConfig,"ec.cfg");
+			Validator.checkFile(fileEc,"Cred file");
+		}
 		
-		//Need to get
-		String tenant= "saltlick";
-		String email = "stonecoal@saltlick";
-		String user = tenant+"/"+email;
-		String pwd = "p_"+email;
-		
-		
-		
-		client = new RestClient(ClientType.HTTP,"http://localhost:8080",RestOp.ENIGMA_SERVLET_URI);
-		String sessKey = EnigmaRestClient.login(EnigmaRestOp.AUTH_TYPE_ENIGMA,user,pwd,client);
-		LOG.info(String.format("Logged in; created session with key=%s",sessKey));
-		
+		logConsole(String.format("Using cred file %s", fileEc.getAbsolutePath()));
+		client = ECred.getRestClient(fileEc);
+			
+		Objects.requireNonNull(client);
 		
 		if (fileCache != null) {
 			RestRepoFileService service = new RestRepoFileService(client);
@@ -218,7 +234,10 @@ public class SolderRestCLI  extends AbstractCLI {
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
 				String repoId = args[nParam++];
-				initSolder("SolderCLIGitInit",fileCache,repoId);
+				
+				File fileRepo = new File(fileCache,repoId);
+				Validator.checkDir(fileRepo, true,"Git Repo Cache");
+				initSolder("SolderCLIGitInit",fileRepo,repoId);
 				
 				gitClient.gitInit();
 				
