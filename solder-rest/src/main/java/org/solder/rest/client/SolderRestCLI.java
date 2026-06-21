@@ -104,10 +104,10 @@ public class SolderRestCLI  extends AbstractCLI {
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create", 
-				"Git create. Params: repoId schemaName [aoId]");
+				"Git create. Params: repoId schemaName [aoId,tag]");
 		
 		mapGitOpsHelp.put("search", 
-				"Search Repo. Params: [repoIdPattern schemaNamePattern]");
+				"Search Repo. Params: [repoIdPattern schemaNamePattern, tagFilter]");
 		mapGitOpsHelp.put("delete", 
 				"Delete Repo (Marks for deletion). Params: repoId");
 		
@@ -189,9 +189,10 @@ public class SolderRestCLI  extends AbstractCLI {
 				IRandom r = CryptoScheme.getDefault().getRandom();
 				String repoId = args[nParam++];
 				String schemaName = args[nParam++];
+				String tag = nParam<args.length?args[nParam++]:null;
 							
 				int aoId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
-				SRepoInfo srepoInfo =  SolderRestClient.createRepo(repoId,schemaName,aoId,client) ;
+				SRepoInfo srepoInfo =  SolderRestClient.createRepo(repoId,schemaName,aoId,tag,client) ;
 				logConsole("id: "+repoId+"; schema="+schemaName+"{; rsRepo="+srepoInfo);
 				//gitCreate(fileCache,stId,schemaName,tenantId,aoId);
 			}
@@ -204,8 +205,12 @@ public class SolderRestCLI  extends AbstractCLI {
 				
 				String repoIdPattern = nParam<args.length?args[nParam++]:"";
 				String schemaNamePattern =  nParam<args.length?args[nParam++]:"";
+				String tagFilter =  nParam<args.length?args[nParam++]:null;
+				if (tagFilter != null && tagFilter.isBlank()) {
+					tagFilter = null;
+				}
 				
-				SRepoInfo[] a =  SolderRestClient.searchRepo(repoIdPattern,schemaNamePattern,client) ;
+				SRepoInfo[] a =  SolderRestClient.searchRepo(repoIdPattern,schemaNamePattern,tagFilter,client) ;
 				
 				logConsole(String.format("Search for repo %s schema %s returned %d repos.",repoIdPattern,schemaNamePattern,a.length));
 				for (SRepoInfo repo : a) {

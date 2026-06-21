@@ -61,6 +61,7 @@ public enum SolderRestSkeleton {
 	CREATE(SolderRestOp.CREATE,SolderRestSkeleton::doCreate),
 	GET(SolderRestOp.GET,SolderRestSkeleton::doGet),	
 	SEARCH(SolderRestOp.SEARCH,SolderRestSkeleton::doSearch),
+	UPDATE(SolderRestOp.UPDATE,SolderRestSkeleton::doUpdate),
 	DELETE(SolderRestOp.DELETE,SolderRestSkeleton::doDelete),
 	GET_LATEST_COMMIT(SolderRestOp.GET_LATEST_COMMIT,SolderRestSkeleton::doGetLatestCommit),
 	DOWNLOAD_FILE(SolderRestOp.DOWNLOAD_FILE,SolderRestSkeleton::doDownloadFile),
@@ -167,8 +168,9 @@ public enum SolderRestSkeleton {
 			String schema = decoder.readString("tschema");
 			schema = Validator.require(schema, "schema", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			int aoId = params.contains("ao_id")?decoder.readInt("ao_id"):0;
+			String tag = params.contains("tag")?decoder.readString("tag"):null;
 			
-			SRepo repo = SolderVaultFactory.ensureSRepo(repoId, schema, user.getTenantId(), aoId);
+			SRepo repo = SolderVaultFactory.ensureSRepo(repoId, schema, user.getTenantId(), aoId,tag);
 			
 						
 			Objects.requireNonNull(repo,"repo");
@@ -224,6 +226,7 @@ public enum SolderRestSkeleton {
 			int tenantId = user.getTenantId();
 			String repoIdWild = null;
 			String schemaWild = null;
+			String tagFilter = null;
 			
 			if (params.contains("id")) {
 				repoIdWild = decoder.readString("idWild");
@@ -232,15 +235,55 @@ public enum SolderRestSkeleton {
 				schemaWild = decoder.readString("tschemaWild");
 			}
 			
+			if (params.contains("tagFilter")) {
+				tagFilter = decoder.readString("tagFilter");
+			}
+			
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,null,tenantId);
 			
-			List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdWild, schemaWild);
+			List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdWild, schemaWild,tagFilter);
 			ref.set(list);
 		});
 
 		// Return
 		state.setSuccess((encoder) -> {
 			encoder.writeList("ret", ref.get(),false);
+		});
+	}
+
+	static void doUpdate(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SRepo> refRepo = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			User user = (User)SessionManager.getUser();
+			
+			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			SRepo repo = SolderVaultFactory.getRepoById(repoId);
+			String tagNew = decoder.readString("tag");
+			Objects.requireNonNull(tagNew,"tagNew is null!");
+					
+			
+			if (repo!=null) {
+				Objects.requireNonNull(repo,()->"repo "+repoId);
+				repo.refresh(null);
+				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
+				repo.updateChange(tagNew, null);
+				refRepo.set(repo);
+			} else 	{
+				throw new RestException("Unable to find repo  "+repoId);
+			}
+			
+			
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeObject("ret", refRepo.get(),false);
 		});
 	}
 	

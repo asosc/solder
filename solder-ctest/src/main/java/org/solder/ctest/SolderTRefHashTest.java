@@ -48,13 +48,16 @@ public class SolderTRefHashTest {
 
 			TRefHashTest.init();
 			
-			SolderTestCommon.initSolder("SolderTRefHashTest.init");
-			
 			File fileCreate = new File(fileRoot, "SolderCreate.SQL");
 			File fileDrop = new File(fileRoot, "SolderDrop.SQL");
 			File fileQuery = new File(fileRoot, "SolderQuery.txt");
-			MSSQLUtil.printAllSchema(fileCreate, fileDrop);
-			SQLQuery.printAll(fileQuery);
+			
+			try {
+				SolderTestCommon.initSolder("SolderTRefHashTest.init");
+			}finally {
+				MSSQLUtil.printAllSchema(fileCreate, fileDrop);
+				SQLQuery.printAll(fileQuery);
+			}
 
 			CryptoScheme scheme = CryptoScheme.getDefault();
 			repoId = scheme.getUUID();
@@ -64,7 +67,9 @@ public class SolderTRefHashTest {
 			if (list.size() > 0) {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
-			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river_refhash", idTenant, random.nextInt());
+			
+			
+			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river_refhash", idTenant, random.nextInt(),"active");
 			
 
 			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));

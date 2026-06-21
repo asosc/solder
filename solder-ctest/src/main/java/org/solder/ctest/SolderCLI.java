@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.apache.commons.cli.Option;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SolderException;
@@ -24,6 +25,7 @@ import com.ee.session.SessionManager;
 import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Tenant;
 import com.jnk.junit.AbstractCLI;
+import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
@@ -94,9 +96,9 @@ public class SolderCLI  extends AbstractCLI {
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create", 
-				"Git create. Params: fileLocalRepo repoId schemaName [tenant_id aoId]");
+				"Git create. Params: fileLocalRepo repoId schemaName [aoId tag tenant_id]");
 		mapGitOpsHelp.put("search", 
-				"Search Repo. Params: repoIdPattern schemaNamePattern [tenant_id]");
+				"Search Repo. Params: repoIdPattern schemaNamePattern tagFilter [tenant_id]");
 		mapGitOpsHelp.put("delete", 
 				"Delete Repo. Params: repoId");
 		
@@ -172,19 +174,26 @@ public class SolderCLI  extends AbstractCLI {
 				String repoId = args[nParam++];
 				String schemaName = args[nParam++];
 				
-				int tenantId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
-				int aoId = nParam>args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
+				int tenantId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
+				int aoId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
+				String tag = nParam<args.length?args[nParam++]:null;
 				
 				logConsole("id: "+repoId+"; schema="+schemaName);
 				
 				String stCommitDir = "Commits";
 				String[] aExt = new String[] {"bee"};
 				SRepo repo = SolderVaultFactory.getRepoById(repoId);
+				
 				if (repo==null) {
 					logConsole(String.format("No previous repo found. creating.."));
-					repo = new SRepo(repoId,schemaName,tenantId,aoId,stCommitDir,aExt);
+					repo = new SRepo(repoId,schemaName,tenantId,aoId,tag,stCommitDir,aExt);
 				} else {
 					logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
+					if (!StringUtils.isEmpty(tag) && !CompareUtils.stringEquals(repo.getTag(),tag)) {
+						//update tag
+						logConsole(String.format("Tags of existing repo %s is different from required %s; Updating",repo.getTag(),tag));
+						repo.updateChange(tag, null);
+					}
 				}
 				
 			}
@@ -196,9 +205,10 @@ public class SolderCLI  extends AbstractCLI {
 				
 				String repoIdPattern = nParam<args.length?args[nParam++]:"";
 				String schemaNamePattern =  nParam<args.length?args[nParam++]:"";
+				String tagFilter =  nParam<args.length?args[nParam++]:"";
 				int tenantId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
 				
-				List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdPattern, schemaNamePattern);
+				List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdPattern, schemaNamePattern,tagFilter);
 				logConsole(String.format("Search for repo %s schema %s returned %d repos.",repoIdPattern,schemaNamePattern,list.size()));
 				for (SRepo repo : list) {
 					logConsole(String.format("\tRepo: %s",""+repo));

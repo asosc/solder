@@ -197,9 +197,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			// (name,fieldType(canonicalName),[flags(0,1),nSpit])
 
 			tsRepo = new SQLTableSchema(SREPO_TABLE);
-			tsRepo.parseAndAdd(new String[] { "sid,int,1","id,string,1", "tschema,string(128),1", "tenant_id,int,1",
-					"ao_id,int,1","deleted,boolean,1", "commit_dir,string,0", "ext_keep,string,1", "commit_id,int,1", "commit_date,date,1",
-					"change_date,date,1", "create_date,date,1", "last_update,date,1" });
+			tsRepo.parseAndAdd(new String[] { "sid,int,1", "id,string,1", "tschema,string(128),1", "tenant_id,int,1",
+					"ao_id,int,1", "tag,string,0", "deleted,boolean,1", "commit_dir,string,0", "ext_keep,string,1",
+					"commit_id,int,1", "commit_date,date,1", "change_date,date,1", "create_date,date,1",
+					"last_update,date,1" });
 
 			String stPrimaryKey = "id";
 			String[] aUnique = new String[] { "tenant_id,tschema,ao_id","sid" };
@@ -223,7 +224,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			
 			qRepoUpdCommit = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "commit_id,commit_date,last_update",
 					"sid,commit_id", "Commit");
-			qRepoUpdChange = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "change_date,last_update", "sid",
+			qRepoUpdChange = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "tag,change_date,last_update", "sid",
 					"Change");
 			
 			qRepoUpdDel = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "id,tschema,deleted,last_update", "sid,id",
@@ -376,7 +377,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	}
 	
 	
-	public static SRepo ensureSRepo(String id, String schemaName, int tenantId, int aoId) throws IOException {
+	public static SRepo ensureSRepo(String id, String schemaName, int tenantId, int aoId,String tag) throws IOException {
 		id = Validator.require(id, "repo id",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 		schemaName= Validator.require(schemaName, "schema name",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 		SRepo repo = SolderVaultFactory.getRepoById(id);
@@ -388,10 +389,13 @@ public class SolderVaultFactory implements IVaultFactory {
 			if (!CompareUtils.stringEquals(schemaName,repo.getSchemaName())) {
 				throw new RestException("A previous repo with a different schema "+repo.getSchemaName()+" exist! id="+repo.getId()+", expected schema "+schemaName);
 			}
+			if (!StringUtils.isEmpty(tag) && CompareUtils.stringEquals(repo.getTag(), tag)) {
+				repo.updateChange(tag, null);
+			}
 			return repo;
 		} else {
 		
-			repo = new SRepo(id, schemaName, tenantId, aoId,"Commits",null);
+			repo = new SRepo(id, schemaName, tenantId, aoId,"Commits",tag,null);
 			TVault tvault = TVault.open(SolderVaultFactory.TYPE, repo.getId(),Mode.CREATE, null);
 			tvault.close();
 			LOG.info(String.format("GitSync %s newly created Tault ",repo.getId()));
@@ -410,7 +414,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			super();
 		}
 
-		public SRepo(String id, String schemaName, int tenantId, int aoId, String commitDir, String[] aExtensions)
+		public SRepo(String id, String schemaName, int tenantId, int aoId,String tag, String commitDir, String[] aExtensions)
 				throws IOException {
 			super();
 			this.id = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
@@ -438,6 +442,7 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			this.tenantId = tenantId;
 			this.aoId = aoId;
+			this.tag = tag;
 			commitId = 0;
 			dateCreate = new Date();
 			dateUpdate = dateCreate;
@@ -459,6 +464,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			encoder.writeString("tschema", schemaName);
 			encoder.writeInt("tenant_id", tenantId);
 			encoder.writeInt("ao_id", aoId);
+			encoder.writeString("tag", tag);
 			encoder.writeBoolean("deleted", fDeleted);
 			encoder.writeString("commit_dir", commitDir);
 			encoder.writeStringArray("ext_keep", aExtension);
@@ -475,6 +481,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			schemaName = decoder.readString("tschema");
 			tenantId = decoder.readInt("tenant_id");
 			aoId = decoder.readInt("ao_id");
+			tag = decoder.readString("tag");
 			fDeleted = decoder.readBoolean("deleted");
 			commitDir = decoder.readString("commit_dir");
 			aExtension = decoder.readStringArray("ext_keep");
@@ -524,6 +531,10 @@ public class SolderVaultFactory implements IVaultFactory {
 		public synchronized int getAoId() {
 			return aoId;
 		}
+		
+		public synchronized String getTag() {
+			return tag;
+		}
 
 		public synchronized String getCommitDir() {
 			return commitDir;
@@ -552,6 +563,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		public synchronized Date getLastDate() {
 			return dateUpdate;
 		}
+		
 		
 		public int generateNewCommitId() throws IOException {
 			return SolderVaultFactory.generateCommitId();
@@ -597,13 +609,14 @@ public class SolderVaultFactory implements IVaultFactory {
 			});
 		}
 
-		public synchronized void updateChange(Date dateChange) throws IOException {
+		public synchronized void updateChange(String tagNew,Date dateChange) throws IOException {
 
+			String tagFinal = Validator.updateValue(tagNew, tag,null);
 			Date dateChangeFinal = Objects.requireNonNull(dateChange);
 			Date dateUpdateNew = new Date();
 
 			int i = SQLTm.get().executeOne(repQ.qRepoUpdChange, (encoder) -> {
-
+				encoder.writeString("tag", tagFinal);
 				encoder.writeDate("change_date", dateChange);
 				encoder.writeDate("last_update", dateUpdateNew);
 
@@ -612,14 +625,15 @@ public class SolderVaultFactory implements IVaultFactory {
 
 			}, null);
 			if (i == 1) {
-				this.dateChange = dateChangeFinal;
-				this.dateUpdate = dateUpdateNew;
-
 				Audit.audit(SAudit.SRepo_Update, sid, -1, tenantId, (cmb) -> {
 					cmb.put("id", id);
 					cmb.put("op", "change_date");
-					cmb.putIfChanged("change_date", dateChangeFinal, dateChange);
+					cmb.putIfChanged("change_date", dateChangeFinal, this.dateChange);
+					cmb.putIfChanged("change_tag", tagFinal, tag);
 				});
+				this.tag = tagFinal;
+				this.dateChange = dateChangeFinal;
+				this.dateUpdate = dateUpdateNew;
 
 			} else {
 				Event.log(SEvent.DbUpdateFail, sid, tenantId, (mb) -> {
@@ -914,7 +928,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	 *
 	 */
 	
-	private static SQLQuery getRepoSearch(boolean fIdPattern,boolean fSchemaPattern,boolean fNonDeletedRepo) throws IOException {
+	private static SQLQuery getRepoSearch(boolean fIdPattern,boolean fSchemaPattern,boolean fTagFilter,boolean fNonDeletedRepo) throws IOException {
 		SQLQuery q=repQ.qRepoSelSid;
 		
 		String stInitial = fNonDeletedRepo?"tenant_id,deleted":"tenant_id";
@@ -927,21 +941,25 @@ public class SolderVaultFactory implements IVaultFactory {
 					if (fSchemaPattern) {
 						sb.append(" AND tschema like ?");
 					}
+					if (fTagFilter) {
+						sb.append(" AND tag=?");
+					}
 				},null);
 		return qRepoSearch;
 	}
 	
-	public static List<SRepo> searchRepo(int tenantId,String idWild, String schemaWild) throws IOException {
+	public static List<SRepo> searchRepo(int tenantId,String idWild, String schemaWild,String tagFilter) throws IOException {
 		
 		boolean fIdWild = !StringUtils.isEmpty(idWild);
 		boolean fSchemaWild = !StringUtils.isEmpty(schemaWild);
+		boolean fTagFilter = !StringUtils.isEmpty(tagFilter);
 		
-		if (!fIdWild && !fSchemaWild) {
+		if (!fIdWild && !fSchemaWild && !fTagFilter) {
 			//You want everything for tenantId...
 			return selectByTenant(tenantId);
 		}
 		
-		SQLQuery qRepoSearch = getRepoSearch(fIdWild,fSchemaWild,true); 
+		SQLQuery qRepoSearch = getRepoSearch(fIdWild,fSchemaWild,fTagFilter,true); 
 		
 		List<SRepo> list = new ArrayList<>();
 		SQLTm.get().select(qRepoSearch, (encoder) -> {
@@ -952,6 +970,9 @@ public class SolderVaultFactory implements IVaultFactory {
 			}
 			if (fSchemaWild) {
 				encoder.writeString("tschema", SQLUtil.replaceWild(schemaWild));
+			}
+			if (fTagFilter) {
+				encoder.writeString("tag", tagFilter);
 			}
 		}, (decoder) -> {
 			
@@ -967,7 +988,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	public static List<SRepo> getDeletedRepo(int tenantId,String id) throws IOException {
 		String idPattern = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 		
-		SQLQuery qRepoSearch = getRepoSearch(true,false,false); 
+		SQLQuery qRepoSearch = getRepoSearch(true,false,false,false); 
 		
 		List<SRepo> list = new ArrayList<>();
 		SQLTm.get().select(qRepoSearch, (encoder) -> {

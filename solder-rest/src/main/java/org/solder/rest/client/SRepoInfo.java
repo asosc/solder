@@ -7,7 +7,6 @@ import java.util.Objects;
 import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
 
 import com.ee.rest.RestException;
-import com.ee.rest.RestOp.RestClient;
 import com.lnk.lucene.record.RecordUtil;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
@@ -16,7 +15,7 @@ import com.lnk.serializer.ISerializable;
 public class SRepoInfo implements ISerializable  {
 	
 	protected int sid;
-	protected String id, schemaName, commitDir;
+	protected String id, schemaName, tag,commitDir;
 	protected boolean fDeleted;
 	protected String[] aExtension;
 	protected int tenantId, aoId, commitId;
@@ -33,6 +32,7 @@ public class SRepoInfo implements ISerializable  {
 		encoder.writeString("tschema", schemaName);
 		encoder.writeInt("tenant_id", tenantId);
 		encoder.writeInt("ao_id", aoId);
+		encoder.writeString("tag", tag);
 		encoder.writeBoolean("deleted", fDeleted);
 		encoder.writeString("commit_dir", commitDir);
 		encoder.writeStringArray("ext_keep", aExtension);
@@ -49,6 +49,7 @@ public class SRepoInfo implements ISerializable  {
 		schemaName = decoder.readString("tschema");
 		tenantId = decoder.readInt("tenant_id");
 		aoId = decoder.readInt("ao_id");
+		tag = decoder.readString("tag");
 		fDeleted = decoder.readBoolean("deleted");
 		commitDir = decoder.readString("commit_dir");
 		aExtension = decoder.readStringArray("ext_keep");
@@ -82,6 +83,10 @@ public class SRepoInfo implements ISerializable  {
 
 	public int getAoId() {
 		return aoId;
+	}
+	
+	public String getTag() {
+		return tag;
 	}
 	
 	public boolean isDeleted() {
@@ -127,8 +132,10 @@ public class SRepoInfo implements ISerializable  {
 		if (!repoRefresh.getId().equals(id) || repoRefresh.getTenantId() != tenantId || repoRefresh.getSeqId()!=sid) {
 			throw new RestException("Error refreshing, obj mismatch");
 		}
-		
-		this.commitId=repoRefresh.commitId;
+	
+		tag = repoRefresh.tag;
+		fDeleted = repoRefresh.fDeleted;
+		commitId=repoRefresh.commitId;
 		dateCommit = repoRefresh.dateCommit;
 		dateChange = repoRefresh.dateChange;
 		dateUpdate = repoRefresh.dateUpdate;

@@ -23,7 +23,7 @@ import com.jnk.util.Validator.Rules;
 public class SolderRestClient {
 	
 	
-	public static SRepoInfo createRepo(String repoId,String schemaName,int aoId, RestClient client) throws IOException {
+	public static SRepoInfo createRepo(String repoId,String schemaName,int aoId,String tag, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
 		TReference<SRepoInfo> ret = new TReference<>();
@@ -32,6 +32,7 @@ public class SolderRestClient {
 			encoder.writeString("id", repoId);
 			encoder.writeString("tschema", schemaName);
 			encoder.writeInt("ao_id", aoId);
+			encoder.writeString("tag", tag);
 		}, (decoder) -> {
 			ret.set(decoder.readObject("ret", SRepoInfo.class));
 		});
@@ -53,7 +54,7 @@ public class SolderRestClient {
 	}
 	
 	
-	public static SRepoInfo[] searchRepo(String repoIdWild,String schemaWild,RestClient client) throws IOException {
+	public static SRepoInfo[] searchRepo(String repoIdWild,String schemaWild,String tagFilter,RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 
 		TReference<SRepoInfo[]> ret = new TReference<>();
@@ -61,8 +62,29 @@ public class SolderRestClient {
 			// You dont have to send this if it is false.
 			encoder.writeString("idWild", repoIdWild);
 			encoder.writeString("tschemaWild", schemaWild);
+			//Exact match or Null. (case sensitive) 
+			encoder.writeString("tagFilter", tagFilter);
 		}, (decoder) -> {
 			ret.set(decoder.readObjectArray("ret", SRepoInfo.class));
+		});
+		return ret.get();
+	}
+	
+	public static SRepoInfo updateRepo(String repoId,String tag,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+		Objects.requireNonNull(tag,"tag cannot be null! send empty instead!");
+
+		
+		TReference<SRepoInfo> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.UPDATE, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+			encoder.writeString("tag", tag);
+		}, (decoder) -> {
+			ret.set(decoder.readObject("ret", SRepoInfo.class));
 		});
 		return ret.get();
 	}
