@@ -378,6 +378,7 @@ public class SolderVaultFactory implements IVaultFactory {
 	
 	
 	public static SRepo ensureSRepo(String id, String schemaName, int tenantId, int aoId,String tag) throws IOException {
+		LOG.trace(String.format("SolderVaultFactory ensureSRepo  %s schemaName=%s tag=%s tenantId=%d aoId=%d", id,schemaName,tag,tenantId,aoId));
 		id = Validator.require(id, "repo id",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 		schemaName= Validator.require(schemaName, "schema name",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 		SRepo repo = SolderVaultFactory.getRepoById(id);
@@ -389,13 +390,17 @@ public class SolderVaultFactory implements IVaultFactory {
 			if (!CompareUtils.stringEquals(schemaName,repo.getSchemaName())) {
 				throw new RestException("A previous repo with a different schema "+repo.getSchemaName()+" exist! id="+repo.getId()+", expected schema "+schemaName);
 			}
-			if (!StringUtils.isEmpty(tag) && CompareUtils.stringEquals(repo.getTag(), tag)) {
+			
+			LOG.trace(String.format("SolderVaultFactory ensureSRepo Found existing Repo %s tag=%s currentTag=%s ", id,tag,repo.getTag()));
+			
+			if (!StringUtils.isEmpty(tag) && !CompareUtils.stringEquals(repo.getTag(), tag)) {
+				LOG.trace(String.format("SolderVaultFactory ensureSRepo Found existing Repo %s Updtage tag to %s", id,tag));
 				repo.updateChange(tag, null);
 			}
 			return repo;
 		} else {
 		
-			repo = new SRepo(id, schemaName, tenantId, aoId,"Commits",tag,null);
+			repo = new SRepo(id, schemaName, tenantId, aoId,tag,"Commits",null);
 			TVault tvault = TVault.open(SolderVaultFactory.TYPE, repo.getId(),Mode.CREATE, null);
 			tvault.close();
 			LOG.info(String.format("GitSync %s newly created Tault ",repo.getId()));

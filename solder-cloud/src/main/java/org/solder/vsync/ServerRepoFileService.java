@@ -122,7 +122,7 @@ public class ServerRepoFileService  implements IRepoFileService {
 		MessageDigest md = RemoteRepoSync.tlMessageDigest.get();
 		md.reset();
 		CryptoScheme cs = CryptoScheme.getDefault();
-		String name = cs.getUUID();
+		String name = cs.getTimeEncodedUUID();
 
 		Map<String, String> mapInfo = new HashMap<>();
 		mapInfo.put("path", se.getRelPath());
@@ -191,7 +191,7 @@ public class ServerRepoFileService  implements IRepoFileService {
 		Map<String, String> mapInfo = new HashMap<>();
 		mapInfo.put("pid", SessionManager.getPid());
 		CryptoScheme cs = CryptoScheme.getDefault();
-		String name = cs.getUUID();
+		String name = cs.getTimeEncodedUUID();
 		BlobFS blobCommit = new BlobFS(name, RemoteRepoSync.BLOB_TYPE_SOLDER_COMMIT, srepo.getId(), sci.getId(), mapInfo,
 				srepo.getTenantId(), -1);
 		BlobFileTransact bft = cg.beginFileTransact(blobCommit);

@@ -931,6 +931,9 @@ public class RemoteRepoSync {
 
 		SRepoInfo srepo = lRepo.srepo;
 		CommitInfo commitInfo = new CommitInfo(lRepo,rfs);
+		String stFileCache = fileCache!=null?fileCache.getAbsolutePath():"null";
+		LOG.info(String.format("RemoteRepoSync repCommit %s from fileCache %s fCommitNew=%s commit=%d chash=%s", srepo.getId(),
+				stFileCache, "" + commitInfo.fNewCommit, commitInfo.getCommitId(), commitInfo.cHash));
 
 		if (!commitInfo.fNewCommit) {
 			LOG.info(String.format("repCommit found no new changes, Nothing to do prev commit=%d chash=%s",commitInfo.getCommitId(),commitInfo.cHash));
