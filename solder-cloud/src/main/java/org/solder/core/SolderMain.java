@@ -13,6 +13,7 @@ import org.apache.commons.logging.LogFactory;
 import org.nimbo.azure.AzureBlobProvider;
 import org.nimbo.blobs.CGRegistry;
 import org.nimbo.blobs.ContainerGroup;
+import org.solder.dbSnap.TSnap;
 import org.solder.rest.skel.SolderRestSkeleton;
 import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SyncLocalRepo;
@@ -51,11 +52,15 @@ public class SolderMain {
 			StopWatch swInit = new StopWatch("SolderMain.init");
 			swInit.start();
 			
+			
+			
+			
 			//Dependency first... (Runonce helps circular calls).
 			ContainerGroup.init();
 			AzureBlobProvider.init();
 			new SolderVaultFactory();
 			SolderVaultFactory.init(dbFinal);
+			TSnap.init(dbFinal);
 			SyncLocalRepo.initDefault();
 			
 			CGRegistry cgReg = CGRegistry.getByName(SOLDER_CGREG_NAME);

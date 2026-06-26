@@ -55,6 +55,7 @@ import com.lnk.jdbc.SQLTableSchema;
 import com.lnk.jdbc.SQLUtil;
 import com.lnk.lucene.BackgroundTask;
 import com.lnk.lucene.RunOnce;
+import com.lnk.serializer.FieldType;
 
 public class SolderVaultFactory implements IVaultFactory {
 
@@ -206,6 +207,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			String[] aUnique = new String[] { "tenant_id,tschema,ao_id","sid" };
 			String[] aIndex = null;
 			tsRepo.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SREPO_SEQ);
+			tsRepo.setSerializerFieldType("ext_keep", FieldType.STRING_ARRAY);
 			tsRepo.setReadOnly();
 			SQLTableSchema.register(tsRepo);
 
@@ -245,6 +247,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			aIndex = null;
 
 			tsCommit.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SCOMMIT_SEQ);
+			tsCommit.setSerializerFieldType("info", FieldType.PROP);
 			tsCommit.setReadOnly();
 			SQLTableSchema.register(tsCommit);
 

@@ -45,6 +45,8 @@ import com.lnk.jdbc.SQLField;
 import com.lnk.jdbc.SQLQuery;
 import com.lnk.jdbc.SQLTableSchema;
 import com.lnk.lucene.LBytesRefBuilder;
+import com.lnk.serializer.Decoder;
+import com.lnk.serializer.Encoder;
 import com.lnk.serializer.FieldType;
 
 public class SQLDBSnap {
@@ -78,10 +80,13 @@ public class SQLDBSnap {
 		
 		
 		Map<String,TField> mapField = new LinkedHashMap<>();
-		for (SQLField sqlField : schema.getFieldList()) {
+		for (SQLField sqlField : schema.getSerializerFieldList()) {
 			String fn = sqlField.getName().toLowerCase();
+			if (sqlField.getParent()!=null) {
+				throw new SolderException("Unexpected split field "+sqlField.getName());
+			}
 			
-			FieldType ft = sqlField.getFieldType();
+			FieldType ft = sqlField.getSerializerFieldType();
 			//Change ft from String to StrindId
 			//Only NOT NULL , but we want to capture everything in database
 			TField field = new TField(fn,ft);
@@ -269,6 +274,80 @@ public class SQLDBSnap {
 		}
 	}
 	
+	public static void copyFields(SQLTableSchema ts,Decoder decoder,Encoder encoder) throws IOException {
+		Objects.requireNonNull(ts);
+		Objects.requireNonNull(decoder);
+		Objects.requireNonNull(encoder);
+		//call encoder.clear
+		
+		FieldType ft;
+		String fn;
+		
+		for (SQLField field : ts.getSerializerFieldList()) {
+			fn = field.getName();
+			ft = field.getSerializerFieldType();
+			//LOG.trace(String.format("copyFields %s %s(%d)", fn,ft.canonicalName(),ft.id()));
+			switch(ft) {
+			case FieldType.STRING:
+			case FieldType.STRING_ID:
+				encoder.writeString(fn,decoder.readString(fn));
+				break;
+				
+			case FieldType.INT:
+				encoder.writeInt(fn,decoder.readInt(fn));
+				break;
+				
+			case FieldType.LONG:
+				encoder.writeLong(fn,decoder.readLong(fn));
+				break;
+				
+			case FieldType.BOOLEAN: 
+				encoder.writeBoolean(fn,decoder.readBoolean(fn));
+				break;
+			
+			case FieldType.FLOAT:
+				encoder.writeFloat(fn,decoder.readFloat(fn));
+				break;
+			
+
+			case FieldType.DOUBLE: 
+				encoder.writeDouble(fn,decoder.readDouble(fn));
+				break;
+			
+
+
+			case FieldType.BYTES: 
+				encoder.writeBytes(fn, decoder.readBytes(fn));
+				break;
+			
+			case FieldType.DATE: 
+				encoder.writeDate(fn, decoder.readDate(fn));
+				break;
+				
+			case FieldType.PROP:
+				encoder.writeProperties(fn, decoder.readProperties(fn));
+				break;
+				
+			case FieldType.INT_ARRAY:
+				encoder.writeIntArray(fn, decoder.readIntArray(fn));
+				break;
+				
+			case FieldType.LONG_ARRAY:
+				encoder.writeLongArray(fn, decoder.readLongArray(fn));
+				break;
+			case FieldType.STRING_ARRAY:
+				encoder.writeStringArray(fn, decoder.readStringArray(fn));
+				break;
+
+				
+			default:
+				throw new SolderException("Unsupported field type "+ft.canonicalName());
+			
+			}
+		}
+		
+	}
+	
 	//First time (for small tables.)
 	public static void addAllRows(String stSQLDBName,SQLTableSchema ts,TSegmentBuilder b) throws IOException{
 		stSQLDBName = Validator.require(stSQLDBName,"sql db name",Rules.NO_NULL_EMPTY);
@@ -288,58 +367,8 @@ public class SQLDBSnap {
 		SQLTm.get().select(qAll,null, (decoder) -> {
 			TRecordEncoder encoder = b.getEncoder();
 			while (decoder.next()) {
-				FieldType ft;
-				String fn;
 				encoder.clear();
-				for (SQLField field : ts.getFieldList()) {
-					fn = field.getName();
-					ft = field.getFieldType();
-					switch(ft) {
-					case FieldType.STRING:
-					case FieldType.STRING_ID:
-						encoder.writeString(fn,decoder.readString(fn));
-						break;
-						
-					case FieldType.INT:
-						encoder.writeInt(fn,decoder.readInt(fn));
-						break;
-						
-					case FieldType.LONG:
-						encoder.writeLong(fn,decoder.readLong(fn));
-						break;
-						
-					case FieldType.BOOLEAN: 
-						encoder.writeBoolean(fn,decoder.readBoolean(fn));
-						break;
-					
-					case FieldType.FLOAT:
-						encoder.writeFloat(fn,decoder.readFloat(fn));
-						break;
-					
-
-					case FieldType.DOUBLE: 
-						encoder.writeDouble(fn,decoder.readDouble(fn));
-						break;
-					
-
-
-					case FieldType.BYTES: 
-						encoder.writeBytes(fn, decoder.readBytes(fn));
-						break;
-					
-					case FieldType.DATE: 
-						encoder.writeDate(fn, decoder.readDate(fn));
-						break;
-
-						
-					default:
-						throw new SolderException("Unsupported field type "+ft.canonicalName());
-					
-					}
-					
-					
-				}
-				
+				copyFields(ts,decoder,encoder);
 				b.add(encoder);
 				if ( (b.size())%100 ==0) {
 					LOG.info(String.format("Added %d Rows to %s",b.size(),stSQLDBNameFinal));

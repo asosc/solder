@@ -6,7 +6,8 @@ import com.ee.session.db.Audit.ActionDefinition;
 import com.ee.session.db.Audit.AuditLogLocation;
 
 public enum SAudit  implements ActionDefinition  {
-	SRepo_Create(201),SRepo_Update(202),SRepo_Delete(203);
+	SRepo_Create(201),SRepo_Update(202),SRepo_Delete(203),
+	;
 	
 	
 	int id;
