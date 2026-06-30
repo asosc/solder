@@ -40,7 +40,7 @@
 		<jackson-annotations.version>2.21</jackson-annotations.version>
 		<jakarta.mail-api.version>2.1.5</jakarta.mail-api.version>
 		<jakarta.activation-api.version>2.1.4</jakarta.activation-api.version>
-		<lucene.version>10.4.0</lucene.version>
+		<lucene.version>10.5.0</lucene.version>
 		<nimbo.version>9.1.1</nimbo.version>
 		<talos-junit.version>2.1.2</talos-junit.version>
 		<jakarta.servlet.version>6.1.0</jakarta.servlet.version>
