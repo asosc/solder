@@ -114,7 +114,7 @@ public class SolderTableTest {
 
 	//@Test
 	public void test_04_LargeRiverTest() throws Exception {
-		tt.test_04_LargeRiverTest();
+		tt.test_004_LargeRiverTest();
 		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
 		svf.repoGitPush(repoId);
 	}
