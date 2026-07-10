@@ -20,6 +20,7 @@ import org.solder.vsync.SyncLocalRepo;
 
 import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Event;
+import com.ee.util.SessUtil;
 import com.lnk.jdbc.SQLDatabase;
 import com.lnk.lucene.BackgroundTask;
 import com.lnk.lucene.RunOnce;
@@ -80,7 +81,7 @@ public class SolderMain {
 			// Load everything once...
 			syncObjects();
 			BackgroundTask.get().createFuture("SolderMain.SyncObjects", (ee) -> {
-				return ee.scheduleWithFixedDelay(SolderException.unchecked(SolderMain::syncObjects), CACHE_REFRESH_SECONDS,
+				return ee.scheduleWithFixedDelay(SessUtil.makeSessFuture("SolderMainSync",SolderMain::syncObjects), CACHE_REFRESH_SECONDS,
 						CACHE_REFRESH_SECONDS, TimeUnit.SECONDS);
 			});
 			
