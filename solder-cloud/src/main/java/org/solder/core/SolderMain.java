@@ -52,10 +52,7 @@ public class SolderMain {
 		RunOnce.ensure(s_fInit, () -> {
 			StopWatch swInit = new StopWatch("SolderMain.init");
 			swInit.start();
-			
-			
-			
-			
+		
 			//Dependency first... (Runonce helps circular calls).
 			ContainerGroup.init();
 			AzureBlobProvider.init();

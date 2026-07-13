@@ -110,45 +110,6 @@ public class SolderTestCommon {
 		
 	}
 	
-	public static StopWatch makeSwatch(String name) {
-		StopWatch sw = new StopWatch(name);
-		sw.start();
-		sw.suspend();
-		return sw;
-	}
-	
-	public static StopWatch reset(StopWatch sw) {
-		Objects.requireNonNull(sw);
-		sw.reset();
-		sw.start();
-		sw.suspend();
-		return sw;
-	}
-	
-	public static String formatTime(CharSequence prefix,StopWatch swTotal,StopWatch... swSplits) {
-		StringBuilder sb = new StringBuilder();
-		if (prefix!=null) {
-			sb.append(prefix).append(" ");
-		}
-
-		
-		sb.append(String.format("Took %s ",swTotal.formatTime()));
-		if (swSplits != null && swSplits.length>0) {
-			sb.append("- Splits (");
-			for (StopWatch sw : swSplits) {
-				sb.append(String.format(" (%s - %s) ", sw.getMessage(),sw.formatTime()));
-			}
-			sb.append(")");
-		}
-		return sb.toString();
-	}
-	
-	public static void printTime(CharSequence prefix,StopWatch swTotal,StopWatch... swSplits) {
-		String stLog = formatTime(prefix,swTotal,swSplits);
-		LOG.info(stLog);
-		System.out.println(stLog);
-	}
-	
 	
 
 }
