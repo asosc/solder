@@ -5,11 +5,15 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -101,7 +105,7 @@ public class SolderTelemetryReader implements Closeable{
 						String name = snap.getName();
 						boolean fAdd = snap.inRange(tStart,tEnd);
 						
-						if (fAdd || true) {
+						if (fAdd) {
 							LOG.info(String.format("SnapAgg %s",name));
 							HdrHistogramSnap snapAgg = mapHdrHist.computeIfAbsent(name, (_)->{
 								String id = String.format("%s_agg_%s", snap.getName(),snap.getRuntimeId());
@@ -122,16 +126,50 @@ public class SolderTelemetryReader implements Closeable{
 		
 		LOG.info(String.format("HdrHistogramSnap %d size.",mapHdrHist.size()));
 		
+		//Do a table.
+		StringBuilder sb = new StringBuilder();
+		CSVPrinter csvPrinter = new CSVPrinter(sb,CSVFormat.DEFAULT);
+		String[] aStHeader = new String[] {"name","count","mean","median","std","min","max","90-tile","95-tile","99-tile"};
+		csvPrinter.printRecord(aStHeader);
+		List<Object> listVal = new ArrayList<>();
+		
+		 
+		
 		for (HdrHistogramSnap snap : mapHdrHist.values()) {
+			listVal.clear();
 			File fileHist = new File(fileCharts,snap.getName()+".hist");
 			Validator.checkNewFile(fileHist, true, "hist file");
-			String st = snap.getPercentileDist(5, 1.0);
-			LOG.info(String.format("Stat:\r\n%s\r\n",st));
+			double scalingRatio = snap.getOutputValueUnitScalingRatio();
+			String st = snap.getPercentileDist(5, scalingRatio);
+			LOG.info(String.format("Stat %s (id=%s):\r\n%s\r\n",snap.getName(),snap.getId(),st));
 			try (FileWriter w = new FileWriter(fileHist,StandardCharsets.UTF_8)) {
 				w.write(st);
 				w.write("\r\n");
 			}
+			listVal.add(snap.getName());
+			listVal.add(snap.getCount());
+			listVal.add(snap.getMean()/scalingRatio);
+			listVal.add(snap.getMedian()/scalingRatio);
+			listVal.add(snap.getStdDeviation()/scalingRatio);
+			listVal.add(snap.getMin()/scalingRatio);
+			listVal.add(snap.getMax()/scalingRatio);
+			listVal.add(snap.getValueAtPercentile(90.0)/scalingRatio);
+			listVal.add(snap.getValueAtPercentile(95.0)/scalingRatio);
+			listVal.add(snap.getValueAtPercentile(99.0)/scalingRatio);
+			csvPrinter.printRecord(listVal);
 		}
+		csvPrinter.close();
+		
+		String stCsv = sb.toString();
+		LOG.info(String.format("\r\n****** CSV Table of HdrHistogramSnap ***\r\n%s\r\n*********\r\n",stCsv));
+		File fileTable = new File(fileCharts,"Summary.csv");
+		Validator.checkNewFile(fileTable, true, "hist file");
+		try (FileWriter w = new FileWriter(fileTable,StandardCharsets.UTF_8)) {
+			w.write(stCsv);
+			w.write("\r\n");
+		}
+		
+		
 		
 	}
 
