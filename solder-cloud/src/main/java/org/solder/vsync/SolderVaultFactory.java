@@ -18,12 +18,15 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nimbo.blobs.BlobFS;
+import org.nimbo.blobs.ContainerGroup;
 import org.solder.core.SAudit;
 import org.solder.core.SEvent;
 import org.solder.core.SolderException;
+import org.solder.core.SolderMain;
 import org.solder.rest.client.RemoteRepoSync;
 import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
 import org.solder.rest.client.RemoteRepoSync.SLocalRepo;
+import org.solder.vsync.SolderVaultFactory.SRepo;
 import org.solder.rest.client.SCommitInfo;
 import org.solder.rest.client.SRepoInfo;
 
@@ -379,7 +382,47 @@ public class SolderVaultFactory implements IVaultFactory {
 		return list;
 	}
 	
+	//Auto create with random id.
+	public static SRepo ensureRepo(String schemaName,int aoId,String tag) throws IOException {
+		
+		schemaName = Validator.require(schemaName, "schemaName", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+		tag =  Validator.require(tag, "tag", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+		ContainerGroup cg = SolderMain.getSolderCg();
+		Objects.requireNonNull(cg,"SolderCg not set!");
+		
+		
+		SRepo repo = getRepoByUnique(Tenant.ROOT_ID,schemaName, aoId);
+		if (repo == null) {
+			//try to create one...
+			String stRandom = CryptoScheme.getDefault().getUUID();
+			String repoId =String.format("%s_%s", schemaName,stRandom.substring(0,8));
+			try {
+				repo = SolderVaultFactory.ensureSRepo(repoId, schemaName, Tenant.ROOT_ID, aoId,tag);
+			}catch(IOException e) {
+				//Race?
+				try {
+					repo = SolderVaultFactory.getRepoByUnique(Tenant.ROOT_ID,schemaName,  aoId);
+					if (repo == null) {
+						LOG.error(String.format("Unable to recover create error ex=%s", PrintUtils.getStackTrace(e)));
+						throw SolderException.rethrow(e);
+					}
+				} catch(Exception e2) {
+					LOG.error(String.format("Ignore second error and throw first error; e2=%s", PrintUtils.getStackTrace(e2)));
+					throw SolderException.rethrow(e);
+				}
+			}
+		} else {
+			if (!StringUtils.isEmpty(tag) && !CompareUtils.stringEquals(repo.getTag(), tag)) {
+				LOG.debug(String.format("ensureSRepo Found existing Repo %s Update tag to %s", repo.getId(),tag));
+				repo.updateChange(tag, null);
+			}
+		}
+		
+		return repo;
+	}
+
 	
+	//Auto create with specific id. -- 
 	public static SRepo ensureSRepo(String id, String schemaName, int tenantId, int aoId,String tag) throws IOException {
 		LOG.trace(String.format("SolderVaultFactory ensureSRepo  %s schemaName=%s tag=%s tenantId=%d aoId=%d", id,schemaName,tag,tenantId,aoId));
 		id = Validator.require(id, "repo id",Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
@@ -397,7 +440,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			LOG.trace(String.format("SolderVaultFactory ensureSRepo Found existing Repo %s tag=%s currentTag=%s ", id,tag,repo.getTag()));
 			
 			if (!StringUtils.isEmpty(tag) && !CompareUtils.stringEquals(repo.getTag(), tag)) {
-				LOG.trace(String.format("SolderVaultFactory ensureSRepo Found existing Repo %s Updtage tag to %s", id,tag));
+				LOG.trace(String.format("SolderVaultFactory ensureSRepo Found existing Repo %s Update tag to %s", id,tag));
 				repo.updateChange(tag, null);
 			}
 			return repo;

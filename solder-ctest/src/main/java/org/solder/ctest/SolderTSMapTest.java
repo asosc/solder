@@ -112,7 +112,7 @@ public class SolderTSMapTest {
 	
 	//@Test
 	public void test_004_LargeTest() throws Exception {
-		tsmapTest.test_004_LargeTest();
+		tsmapTest.test_004_LargeRiverTest();
 		SolderVaultFactory svf = (SolderVaultFactory)TVault.getFactory(SolderVaultFactory.TYPE);
 		svf.repoGitPush(repoId);
 	}
