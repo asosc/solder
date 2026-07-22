@@ -663,12 +663,12 @@ public class SolderVaultFactory implements IVaultFactory {
 		public synchronized void updateChange(String tagNew,Date dateChange) throws IOException {
 
 			String tagFinal = Validator.updateValue(tagNew, tag,null);
-			Date dateChangeFinal = Objects.requireNonNull(dateChange);
+			Date dateChangeFinal = Validator.updateValue(dateChange, this.dateChange, null);
 			Date dateUpdateNew = new Date();
 
 			int i = SQLTm.get().executeOne(repQ.qRepoUpdChange, (encoder) -> {
 				encoder.writeString("tag", tagFinal);
-				encoder.writeDate("change_date", dateChange);
+				encoder.writeDate("change_date", dateChangeFinal);
 				encoder.writeDate("last_update", dateUpdateNew);
 
 				// Where clause come

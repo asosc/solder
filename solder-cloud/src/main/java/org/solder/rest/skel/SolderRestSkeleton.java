@@ -169,12 +169,12 @@ public enum SolderRestSkeleton {
 			schema = Validator.require(schema, "schema", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			int aoId = params.contains("ao_id")?decoder.readInt("ao_id"):0;
 			String tag = params.contains("tag")?decoder.readString("tag"):null;
+
+			// Authorize before any create/update mutation.
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,null,user.getTenantId());
 			
 			SRepo repo = SolderVaultFactory.ensureSRepo(repoId, schema, user.getTenantId(), aoId,tag);
-			
-						
 			Objects.requireNonNull(repo,"repo");
-			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,null,user.getTenantId());
 			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
 			refA.set(repo);
 		});
@@ -228,10 +228,10 @@ public enum SolderRestSkeleton {
 			String schemaWild = null;
 			String tagFilter = null;
 			
-			if (params.contains("id")) {
+			if (params.contains("idWild")) {
 				repoIdWild = decoder.readString("idWild");
 			}
-			if (params.contains("tschema")) {
+			if (params.contains("tschemaWild")) {
 				schemaWild = decoder.readString("tschemaWild");
 			}
 			
@@ -410,11 +410,10 @@ public enum SolderRestSkeleton {
 			String repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			SRepo repo = SolderVaultFactory.getRepoById(repoId);
 			Objects.requireNonNull(repo,()->"repo "+repoId);
-			
-			commitId.setValue(repo.generateNewCommitId());
-			
-			//Verify Roles and Priv..
+
+			// Authorize before allocating a commit sequence id.
 			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
+			commitId.setValue(repo.generateNewCommitId());
 
 		});
 

@@ -274,11 +274,11 @@ public class TSnap implements ISerializable {
 
 		int i = SQLTm.get().executeOne(tsnapQ.qTsnapUpd, (encoder) -> {
 
-			encoder.writeString(FN_NEXT_CRITERIA, nextCriteria);
-			encoder.writeProperties(FN_PROPS, props);
-			encoder.writeInt(FN_NIMPORT, nImport);
-			encoder.writeInt(FN_NIGNORED, nIgnored);
-			encoder.writeInt(FN_NTOTAL, nTotal);
+			encoder.writeString(FN_NEXT_CRITERIA, nextCriteriaFinal);
+			encoder.writeProperties(FN_PROPS, propsFinal);
+			encoder.writeInt(FN_NIMPORT, nImportFinal);
+			encoder.writeInt(FN_NIGNORED, nIgnoredFinal);
+			encoder.writeInt(FN_NTOTAL, nTotalFinal);
 
 			// Where clause come
 			encoder.writeInt(FN_ID, id);

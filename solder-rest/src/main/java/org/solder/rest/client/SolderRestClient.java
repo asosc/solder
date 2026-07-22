@@ -152,18 +152,18 @@ public class SolderRestClient {
 		
 	}
 	
-	public static int uploadFile(String repoId,SolderEntry se,IOSupplier<InputStream> suppIs, RestClient client) throws IOException {
+	public static long uploadFile(String repoId,SolderEntry se,IOSupplier<InputStream> suppIs, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
-		MutableInt id = new MutableInt(-1);
+		MutableLong id = new MutableLong(-1);
 		client.doStreamRestCall(SolderRestOp.UPLOAD_FILE, (encoder) -> {
 			// You dont have to send this if it is false.
 			encoder.writeString("id", repoId);
 			encoder.writeObject("se", se,false);
 		}, suppIs,(decoder) -> {
-			id.setValue(decoder.readInt("ret"));
+			id.setValue(decoder.readLong("ret"));
 		},null);
-		return id.intValue();
+		return id.longValue();
 	}
 	
 	
