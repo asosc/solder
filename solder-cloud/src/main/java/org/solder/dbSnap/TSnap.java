@@ -302,6 +302,7 @@ public class TSnap implements ISerializable {
 				mb.put(FN_NIGNORED, nIgnoredFinal);
 				mb.put(FN_NTOTAL, nTotalFinal);
 			});
+			throw new EException("Failed to update tsnap; id=" + id);
 		} 
 	}
 

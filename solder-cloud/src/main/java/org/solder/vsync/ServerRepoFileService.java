@@ -232,6 +232,7 @@ public class ServerRepoFileService  implements IRepoFileService {
 			}
 			String ownerDelete = srepo.getId() + "_del";
 			for (String stDelRelPath : listDelEntryRelPath) {
+				RemoteRepoSync.requireSafeRelPath(stDelRelPath);
 				BlobFS fsToDelete = mapBlobFSPrev.get(stDelRelPath);
 				if (fsToDelete != null) {
 					fsToDelete.updateOwner(null, ownerDelete);

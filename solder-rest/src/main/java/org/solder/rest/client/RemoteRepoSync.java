@@ -111,6 +111,25 @@ public class RemoteRepoSync {
 		}
 	}
 
+	/**
+	 * Reject absolute paths and path traversal in relative repo paths.
+	 */
+	public static void requireSafeRelPath(String relPath) throws IOException {
+		Validator.require(relPath, "rel path", Rules.NO_NULL_EMPTY);
+		String normalized = relPath.replace('\\', '/');
+		if (normalized.startsWith("/") || normalized.indexOf(':') >= 0) {
+			throw new RestException("Illegal rel path: " + relPath);
+		}
+		for (String part : normalized.split("/")) {
+			if (part.isEmpty() || ".".equals(part)) {
+				continue;
+			}
+			if ("..".equals(part)) {
+				throw new RestException("Illegal rel path: " + relPath);
+			}
+		}
+	}
+
 	static final SolderEntry[] EMPTY_SOLDER_ENTRY = new SolderEntry[0];
 
 	public static class SolderEntry implements ISerializable {
@@ -128,7 +147,7 @@ public class RemoteRepoSync {
 		}
 
 		public SolderEntry(String relPath, EntryType etype, File file, long blobFsId, int commitId) throws IOException {
-			Validator.require(relPath, "rel path", Rules.NO_NULL_EMPTY);
+			requireSafeRelPath(relPath);
 			Objects.requireNonNull(etype);
 
 			Objects.requireNonNull(file, "file");
@@ -598,12 +617,17 @@ public class RemoteRepoSync {
 				String relPath = entry.getKey();
 				SolderEntry se = entry.getValue();
 				if (se.etype == EntryType.COMMIT) {
-					InputStream is = new FileInputStream(se.file);
-					OutputStream os = fsCommit.create(se.stRelPath);
-					BFile bfile = fsCommit.getEntry(se.stRelPath);
-					bfile.setTime(System.currentTimeMillis(), se.file.lastModified());
-					IOUtils.copy(is, os);
-					os.close();
+					InputStream is = null;
+					OutputStream os = null;
+					try {
+						is = new FileInputStream(se.file);
+						os = fsCommit.create(se.stRelPath);
+						BFile bfile = fsCommit.getEntry(se.stRelPath);
+						bfile.setTime(System.currentTimeMillis(), se.file.lastModified());
+						IOUtils.copy(is, os);
+					} finally {
+						IOUtils.closeQuietly(os, is);
+					}
 					cHashBuilder.accept(se);
 
 				} else if (se.etype == EntryType.BLOB) {
@@ -787,13 +811,25 @@ public class RemoteRepoSync {
 		File fileDownload = rfs.downloadFile(srepo,"",scommit.getBlobFsId());
 		
 		BeechFS fsCommit = new BeechFS(fileDownload, Mode.READONLY);
+		try {
+			checkoutFromCommit(lrepo, rfs, srepo, fsCommit);
+		} finally {
+			IOUtils.closeQuietly(fsCommit);
+		}
+	}
+
+	static void checkoutFromCommit(SLocalRepo lrepo, IRepoFileService rfs, SRepoInfo srepo, BeechFS fsCommit)
+			throws IOException {
 		
 		//Get fS d
 		
 		InputStream is = fsCommit.read(RemoteRepoSync.COMMIT_DETAIL);
 		LBytesRefBuilder brb = new LBytesRefBuilder();
-		brb.append(is, -1, true);
-		IOUtils.closeQuietly(is);
+		try {
+			brb.append(is, -1, true);
+		} finally {
+			IOUtils.closeQuietly(is);
+		}
 		String stJson = brb.get().utf8ToString();
 		CommitInfo commitInfo = LogJsonDecoder.getTL().readObject(stJson, CommitInfo.class);
 		Map<String,SolderEntry> mapEntriesNow = lrepo.createEntryMap();
@@ -815,6 +851,7 @@ public class RemoteRepoSync {
 			iter.remove();
 			
 			String stDataRelPath = seData.getRelPath();
+			requireSafeRelPath(stDataRelPath);
 			
 			
 			
@@ -842,11 +879,15 @@ public class RemoteRepoSync {
 				File fileDest = lrepo.relPath.resolve(stDataRelPath);
 				Validator.checkNewFile(fileDest,true, stDataRelPath);
 				md.reset();
-				InputStream isSrc = new FileInputStream(fileSrc);
-				OutputStream os = new FileOutputStream(fileDest);
-				DigestOutputStream dos = new DigestOutputStream(os,md);
-				IOUtils.copy(isSrc,dos);
-				dos.close();
+				InputStream isSrc = null;
+				DigestOutputStream dos = null;
+				try {
+					isSrc = new FileInputStream(fileSrc);
+					dos = new DigestOutputStream(new FileOutputStream(fileDest), md);
+					IOUtils.copy(isSrc,dos);
+				} finally {
+					IOUtils.closeQuietly(dos, isSrc);
+				}
 				
 				String stDigestWritten = PrintUtils.toHexString(md.digest());
 				LOG.info(String.format("New Blob File %s",seData.toString()));
@@ -862,6 +903,7 @@ public class RemoteRepoSync {
 			SolderEntry seCommit = iter.next();
 			iter.remove();
 			String stRelPath = seCommit.getRelPath();
+			requireSafeRelPath(stRelPath);
 			SolderEntry seCurrent= mapEntriesNow.remove(stRelPath);
 			boolean fCopy = true;
 			if (seCurrent!= null) {
@@ -885,11 +927,15 @@ public class RemoteRepoSync {
 				File fileDest = lrepo.relPath.resolve(stRelPath);
 				Validator.checkNewFile(fileDest,true, stRelPath);
 				md.reset();
-				InputStream isSrc = fsCommit.read(stRelPath);
-				OutputStream os = new FileOutputStream(fileDest);
-				DigestOutputStream dos = new DigestOutputStream(os,md);
-				IOUtils.copy(isSrc,dos);
-				dos.close();
+				InputStream isSrc = null;
+				DigestOutputStream dos = null;
+				try {
+					isSrc = fsCommit.read(stRelPath);
+					dos = new DigestOutputStream(new FileOutputStream(fileDest), md);
+					IOUtils.copy(isSrc,dos);
+				} finally {
+					IOUtils.closeQuietly(dos, isSrc);
+				}
 				
 				String stDigestWritten = PrintUtils.toHexString(md.digest());
 				LOG.info(String.format("New Commit File %s",seCommit.toString()));

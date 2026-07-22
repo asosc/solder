@@ -375,6 +375,9 @@ public enum SolderRestSkeleton {
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			
 			String relPath = decoder.readString("rel_path");
+			if (!StringUtils.isEmpty(relPath)) {
+				RemoteRepoSync.requireSafeRelPath(relPath);
+			}
 			long blobFsId = decoder.readLong("blob_fsid");
 			SCommit scommit = repo.getLatestCommit();
 			refB.set(scommit);
@@ -554,6 +557,12 @@ public enum SolderRestSkeleton {
 			refSci.set(sci);
 			refDigest.set(decoder.readString("digest"));
 			refDelRelPaths.set(decoder.readStringArray("del_rel_paths"));
+			String[] aDelCheck = refDelRelPaths.get();
+			if (aDelCheck != null) {
+				for (String delPath : aDelCheck) {
+					RemoteRepoSync.requireSafeRelPath(delPath);
+				}
+			}
 			
 			//Verify Roles and Priv..
 			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);

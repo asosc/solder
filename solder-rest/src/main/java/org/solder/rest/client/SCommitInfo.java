@@ -53,7 +53,7 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 
 	public int compareTo(SCommitInfo sc) {
 		// Natural order is based on id.
-		return id - sc.id;
+		return Integer.compare(id, sc.id);
 	}
 
 	public boolean equals(Object o) {
@@ -62,6 +62,10 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 		} else {
 			return false;
 		}
+	}
+
+	public int hashCode() {
+		return Integer.hashCode(id);
 	}
 	
 	

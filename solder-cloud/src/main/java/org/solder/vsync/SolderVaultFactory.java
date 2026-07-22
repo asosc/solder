@@ -104,9 +104,11 @@ public class SolderVaultFactory implements IVaultFactory {
 		SLocalRepo lrepo;
 		FileVaultProvider fvp;
 		SRepo repo;
+		boolean fReadOnly;
 		
 		SolderVaultProvider(SRepo repo,boolean fReadOnly) throws IOException{
 			this.repo=repo;
+			this.fReadOnly = fReadOnly;
 			syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
 			fileProv = syncCache.ensureSyncFolder(repo.getId());
 			//Solder Sync On...
@@ -150,7 +152,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		
 		
 		public boolean isReadOnly() {
-			return false;
+			return fReadOnly;
 		}
 		
 		
@@ -691,6 +693,7 @@ public class SolderVaultFactory implements IVaultFactory {
 					mb.put("table", "srepo");
 					mb.put("id", id);
 				});
+				throw new SolderException("Failed to update srepo change; id=" + id);
 			}
 
 		}
@@ -746,6 +749,7 @@ public class SolderVaultFactory implements IVaultFactory {
 					mb.put("op", "update_del");
 					mb.put("id", id);
 				});
+				throw new SolderException("Failed to soft-delete srepo; id=" + id);
 			}
 
 		}
@@ -796,6 +800,7 @@ public class SolderVaultFactory implements IVaultFactory {
 					mb.put("id", id);
 					mb.put("commit_id", commitIdNew);
 				});
+				throw new SolderException("Failed to update srepo commit; id=" + id + "; commitId=" + commitIdNew);
 			}
 
 		}
