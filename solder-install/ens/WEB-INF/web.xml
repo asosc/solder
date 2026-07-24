@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+ Templated Update from apache\Tomcat\apache-tomcat-11.0.11-windows-x64\apache-tomcat-11.0.11\conf
+ Template from \apache\Tomcat\apache-tomcat-10.1.46-windows-x64\apache-tomcat-10.1.46\conf
+-->
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
+                      https://jakarta.ee/xml/ns/jakartaee/web-app_6_1.xsd"
+  version="6.1">
+
+<context-param>
+  <param-name>ens.root.dir</param-name>
+  <param-value>C:/enigmaRt</param-value>
+</context-param>
+
+
+
+  <!-- ======================== Introduction ============================== -->
+  <!-- This document defines default values for *all* web applications      -->
+  <!-- loaded into this instance of Tomcat.  As each application is         -->
+  <!-- deployed, this file is processed, followed by the                    -->
+  <!-- "/WEB-INF/web.xml" deployment descriptor from your own               -->
+  <!-- applications.                                                        -->
+  <!--                                                                      -->
+  <!-- WARNING:  Do not configure application-specific resources here!      -->
+  <!-- They should go in the "/WEB-INF/web.xml" file in your application.   -->
+
+
+  <!-- Set the default request and response character encodings to UTF-8.   -->
+  <request-character-encoding>UTF-8</request-character-encoding>
+  <response-character-encoding>UTF-8</response-character-encoding>
+  
+  <!-- The JSP page compiler and execution servlet, which is the mechanism  -->
+  <!-- used by Tomcat to support JSP pages.  Traditionally, this servlet    -->
+  <!-- is mapped to the URL pattern "*.jsp".  This servlet supports the     -->
+  <!-- following initialization parameters (default values are in square    -->
+  <!-- brackets):                                                           -->
+  <!--                                                                      -->
+  <!--   checkInterval       If development is false and checkInterval is   -->
+  <!--                       greater than zero, background compilations are -->
+  <!--                       enabled. checkInterval is the time in seconds  -->
+  <!--                       between checks to see if a JSP page (and its   -->
+  <!--                       dependent files) needs to  be recompiled. [0]  -->
+  <!--                                                                      -->
+  <!--   classdebuginfo      Should the class file be compiled with         -->
+  <!--                       debugging information?  [true]                 -->
+  <!--                                                                      -->
+  <!--   classpath           What class path should I use while compiling   -->
+  <!--                       generated servlets?  [Created dynamically      -->
+  <!--                       based on the current web application]          -->
+  <!--                                                                      -->
+  <!--   compiler            Which compiler Ant should use to compile JSP   -->
+  <!--                       pages.  See the jasper documentation for more  -->
+  <!--                       information.                                   -->
+  <!--                                                                      -->
+  <!--   compilerSourceVM    Compiler source VM. [17]                      -->
+  <!--                                                                      -->
+  <!--   compilerTargetVM    Compiler target VM. [17]                      -->
+  <!--                                                                      -->
+  <!--   development         Is Jasper used in development mode? If true,   -->
+  <!--                       the frequency at which JSPs are checked for    -->
+  <!--                       modification may be specified via the          -->
+  <!--                       modificationTestInterval parameter. [true]     -->
+  <!--                                                                      -->
+  <!--   displaySourceFragment                                              -->
+  <!--                       Should a source fragment be included in        -->
+  <!--                       exception messages? [true]                     -->
+  <!--                                                                      -->
+  <!--   dumpSmap            Should the SMAP info for JSR45 debugging be    -->
+  <!--                       dumped to a file? [false]                      -->
+  <!--                       False if suppressSmap is true                  -->
+  <!--                                                                      -->
+  <!--   enablePooling       Determines whether tag handler pooling is      -->
+  <!--                       enabled. This is a compilation option. It will -->
+  <!--                       not alter the behaviour of JSPs that have      -->
+  <!--                       already been compiled. [true]                  -->
+  <!--                                                                      -->
+  <!--   engineOptionsClass  Allows specifying the Options class used to    -->
+  <!--                       configure Jasper. If not present, the default  -->
+  <!--                       EmbeddedServletOptions will be used.           -->
+  <!--                                                                      -->
+  <!--   errorOnUseBeanInvalidClassAttribute                                -->
+  <!--                       Should Jasper issue an error when the value of -->
+  <!--                       the class attribute in an useBean action is    -->
+  <!--                       not a valid bean class?  [true]                -->
+  <!--                                                                      -->
+  <!--   fork                Tell Ant to fork compiles of JSP pages so that -->
+  <!--                       a separate JVM is used for JSP page compiles   -->
+  <!--                       from the one Tomcat is running in. [true]      -->
+  <!--                                                                      -->
+  <!--   genStringAsCharArray                                               -->
+  <!--                       Should text strings be generated as char       -->
+  <!--                       arrays, to improve performance in some cases?  -->
+  <!--                       [false]                                        -->
+  <!--                                                                      -->
+  <!--   javaEncoding        Java file encoding to use for generating java  -->
+  <!--                       source files. [UTF8]                           -->
+  <!--                                                                      -->
+  <!--   keepgenerated       Should we keep the generated Java source code  -->
+  <!--                       for each page instead of deleting it? [true]   -->
+  <!--                                                                      -->
+  <!--   mappedfile          Should we generate static content with one     -->
+  <!--                       print statement per input line, to ease        -->
+  <!--                       debugging?  [true]                             -->
+  <!--                                                                      -->
+  <!--   maxLoadedJsps       The maximum number of JSPs that will be loaded -->
+  <!--                       for a web application. If more than this       -->
+  <!--                       number of JSPs are loaded, the least recently  -->
+  <!--                       used JSPs will be unloaded so that the number  -->
+  <!--                       of JSPs loaded at any one time does not exceed -->
+  <!--                       this limit. A value of zero or less indicates  -->
+  <!--                       no limit. [-1]                                 -->
+  <!--                                                                      -->
+  <!--   jspIdleTimeout      The amount of time in seconds a JSP can be     -->
+  <!--                       idle before it is unloaded. A value of zero    -->
+  <!--                       or less indicates never unload. [-1]           -->
+  <!--                                                                      -->
+  <!--   modificationTestInterval                                           -->
+  <!--                       Causes a JSP (and its dependent files) to not  -->
+  <!--                       be checked for modification during the         -->
+  <!--                       specified time interval (in seconds) from the  -->
+  <!--                       last time the JSP was checked for              -->
+  <!--                       modification. A value of 0 will cause the JSP  -->
+  <!--                       to be checked on every access.                 -->
+  <!--                       Used in development mode only. [4]             -->
+  <!--                                                                      -->
+  <!--   recompileOnFail     If a JSP compilation fails should the          -->
+  <!--                       modificationTestInterval be ignored and the    -->
+  <!--                       next access trigger a re-compilation attempt?  -->
+  <!--                       Used in development mode only and is disabled  -->
+  <!--                       by default as compilation may be expensive and -->
+  <!--                       could lead to excessive resource usage.        -->
+  <!--                       [false]                                        -->
+  <!--                                                                      -->
+  <!--   scratchdir          What scratch directory should we use when      -->
+  <!--                       compiling JSP pages?  [default work directory  -->
+  <!--                       for the current web application]               -->
+  <!--                                                                      -->
+  <!--   suppressSmap        Should the generation of SMAP info for JSR45   -->
+  <!--                       debugging be suppressed?  [false]              -->
+  <!--                                                                      -->
+  <!--   trimSpaces          Should template text that consists entirely of -->
+  <!--                       whitespace be removed from the output (true),  -->
+  <!--                       replaced with a single space (single) or left  -->
+  <!--                       unchanged (false)? Note that if a JSP page or  -->
+  <!--                       tag file specifies a trimDirectiveWhitespaces  -->
+  <!--                       value of true, that will take precedence over  -->
+  <!--                       this configuration setting for that page/tag.  -->
+  <!--                       [false]                                        -->
+  <!--                                                                      -->
+  <!--   xpoweredBy          Determines whether X-Powered-By response       -->
+  <!--                       header is added by generated servlet.  [false] -->
+  <!--                                                                      -->
+  <!--   strictQuoteEscaping When scriptlet expressions are used for        -->
+  <!--                       attribute values, should the rules in JSP.1.6  -->
+  <!--                       for the escaping of quote characters be        -->
+  <!--                       strictly applied? [true]                       -->
+  <!--                                                                      -->
+  <!--   quoteAttributeEL    When EL is used in an attribute value on a     -->
+  <!--                       JSP page should the rules for quoting of       -->
+  <!--                       attributes described in JSP.1.6 be applied to  -->
+  <!--                       the expression? [true]                         -->
+
+    <servlet>
+        <servlet-name>jsp</servlet-name>
+        <servlet-class>org.apache.jasper.servlet.JspServlet</servlet-class>
+        <init-param>
+            <param-name>fork</param-name>
+            <param-value>false</param-value>
+        </init-param>
+        <init-param>
+            <param-name>xpoweredBy</param-name>
+            <param-value>false</param-value>
+        </init-param>
+        <load-on-startup>3</load-on-startup>
+    </servlet>
+
+
+
+
+  <!-- ens - Enigma server                                                  -->
+ 
+
+    <servlet>
+        <servlet-name>ensh</servlet-name>
+        <servlet-class>
+          com.ee.ens.EnServlet
+        </servlet-class>
+        <init-param>
+          <param-name>test</param-name>
+          <param-value>1</param-value>
+        </init-param>
+       
+        <load-on-startup>4</load-on-startup>
+    </servlet>
+
+
+
+  <!-- ================ Built In Servlet Mappings ========================= -->
+
+
+  <!-- The servlet mappings for the built in servlets defined above.  Note  -->
+  <!-- that, by default, the CGI and SSI servlets are *not* mapped.  You    -->
+  <!-- must uncomment these mappings (or add them to your application's own -->
+  <!-- web.xml deployment descriptor) to enable these services              -->
+
+  
+    <!-- The mappings for the JSP servlet -->
+    <servlet-mapping>
+        <servlet-name>jsp</servlet-name>
+        <url-pattern>*.jsp</url-pattern>
+        <url-pattern>*.jspx</url-pattern>
+	 <url-pattern>*.html</url-pattern>
+
+    </servlet-mapping>
+
+    <!-- The mapping for the SSI servlet -->
+
+    <servlet-mapping>
+        <servlet-name>ensh</servlet-name>
+        <url-pattern>/ensh/*</url-pattern>
+    </servlet-mapping>
+
+ 
+
+  <!-- ==================== Default Welcome File List ===================== -->
+  <!-- When a request URI refers to a directory, the default servlet looks  -->
+  <!-- for a "welcome file" within that directory and, if present, to the   -->
+  <!-- corresponding resource URI for display.                              -->
+  <!-- If no welcome files are present, the default servlet either serves a -->
+  <!-- directory listing (see default servlet configuration on how to       -->
+  <!-- customize) or returns a 404 status, depending on the value of the    -->
+  <!-- listings setting.                                                    -->
+  <!--                                                                      -->
+  <!-- If you define welcome files in your own application's web.xml        -->
+  <!-- deployment descriptor, that list *replaces* the list configured      -->
+  <!-- here, so be sure to include any of the default values that you wish  -->
+  <!-- to use within your application.                                      -->
+
+    <welcome-file-list>
+        <welcome-file>index.html</welcome-file>
+        <welcome-file>index.htm</welcome-file>
+        <welcome-file>index.jsp</welcome-file>
+    </welcome-file-list>
+
+</web-app>

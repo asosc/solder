@@ -24,6 +24,7 @@ import com.ee.session.ISession;
 import com.ee.session.SessionManager;
 import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Tenant;
+import com.ee.util.Config;
 import com.jnk.junit.AbstractCLI;
 import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
@@ -124,11 +125,11 @@ public class SolderCLI  extends AbstractCLI {
 		logConsole("Initializing EESessionProvider using config "+fileEECfg.getAbsolutePath());
 		Validator.checkFile(fileEECfg, "Given config file");
 		
-		EESessionProvider.init(fileEECfg);
+		Config cfg =EESessionProvider.init(fileEECfg);
 		logConsole("Success initializing EESessionProvider using config "+fileEECfg.getAbsolutePath());
 		ISession s = SessionManager.createSystemSession();
 		s.beginTrans("InitSolder", null, false);
-		SolderMain.init();
+		SolderMain.init(cfg);
 		s.endSession();
 		if (stCmd != null && stCmd.length()>0) {
 			ISession s2 = SessionManager.createSystemSession();

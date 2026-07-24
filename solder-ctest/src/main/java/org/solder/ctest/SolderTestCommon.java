@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.time.StopWatch;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SolderMain;
@@ -19,6 +18,7 @@ import org.solder.core.SolderMain;
 import com.ee.session.ISession;
 import com.ee.session.SessionManager;
 import com.ee.session.db.EESessionProvider;
+import com.ee.util.Config;
 import com.jnk.junit.ResourceUtil;
 import com.jnk.util.Validator;
 import com.lnk.lucene.LBytesRef;
@@ -95,12 +95,12 @@ public class SolderTestCommon {
 		Validator.checkFile(fileCfg, "Enigma DB file to store.");
 		
 		LOG.info("Initializing EESessionProvider using config "+fileCfg.getAbsolutePath());
-		EESessionProvider.init(fileCfg);
+		Config cfg = EESessionProvider.init(fileCfg);
 		LOG.info("Success initializing EESessionProvider using config "+fileCfg.getAbsolutePath());
 		
 		ISession s = SessionManager.createSystemSession();
 		s.beginTrans("InitSolder", null, false);
-		SolderMain.init();
+		SolderMain.init(cfg);
 		
 		s.endSession();
 		if (stCmd != null && stCmd.length()>0) {
