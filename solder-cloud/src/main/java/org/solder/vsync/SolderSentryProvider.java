@@ -32,7 +32,7 @@ public class SolderSentryProvider extends SentryProvider {
 		// Only 2 roles. everything should be done by apps.
 		static AtomicBoolean s_fInit = new AtomicBoolean(false);
 
-		static void init() throws IOException {
+		public static void init() throws IOException {
 			RunOnce.ensure(s_fInit, () -> {
 				// First create statc roles.
 				RolePriv.registerNamedOps(SOLDEROP_SOLDER_ADMIN, SOLDEROP_READ,SOLDEROP_WRITE);
