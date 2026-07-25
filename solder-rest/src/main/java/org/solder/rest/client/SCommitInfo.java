@@ -14,7 +14,7 @@ import com.lnk.serializer.Encoder;
 import com.lnk.serializer.ISerializable;
 
 public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
-	protected int id,idPrev;
+	protected int id,idPrev,repoSid;
 
 	protected String chash, repoId,chashPrev;
 	protected long blobFsId;
@@ -72,6 +72,7 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 
 	public void serialize(Encoder encoder) throws IOException {
 		encoder.writeInt("id", id);
+		encoder.writeInt("repo_sid", repoSid);
 		encoder.writeString("repo_id", repoId);
 		encoder.writeString("chash", chash);
 		encoder.writeInt("prev_id", idPrev);
@@ -85,6 +86,7 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 	public void deserialize(Decoder decoder) throws IOException {
 
 		id = decoder.readInt("id");
+		repoSid = decoder.readInt("repo_sid");
 		repoId = decoder.readString("repo_id");
 		chash = decoder.readString("chash");
 		idPrev = decoder.readInt("prev_id");
@@ -97,6 +99,10 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 
 	public int getId() {
 		return id;
+	}
+	
+	public int getRepoSeqId() {
+		return repoSid;
 	}
 
 	public String getRepoId() {

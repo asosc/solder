@@ -55,7 +55,7 @@ public class RestRepoFileService implements IRepoFileService {
 		File fileRoot = tf.getTempDir(srepoInfo.getId());
 		
 		File fileTmp = new File(fileRoot,""+blobFsId);
-		Validator.checkFile(fileTmp, "New Temp file");
+		Validator.checkNewFile(fileTmp,true, "New Temp file");
 		
 		TReference<SCommitInfo> tref = new TReference<>();
 

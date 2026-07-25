@@ -114,19 +114,100 @@ public class SolderVaultFactory implements IVaultFactory {
 			//Solder Sync On...
 			lrepo = new SLocalRepo(repo, fileProv,true);
 			//We want to make sure the lrepo has 
+			
+			
+			// If we opened in readonly more or there are no repository to begin with
+			//everything works as it is now.
+			//If the commit ids are different and our local repo contains no uncommitted 
+			//write, this works too.
+			//If there is a change (2 kinds, one where we did not commit to the TOC, that too works
+			//If a commit to TOC has occured and the server has never seen that commit,
+			//We have a decision to make. - Either it was  a local change that was never meant to be
+			//pushed or we made local changes and the push never occured  for whatever reason (by design or error).
+			
+			//Apps should try to use a single process to update as it would minimize loss of data but it is like any
+			//commit, if you manage to commit you have it or else you dont. In this, apps will expects server sync
+			//when local commit was successful. Apps should make sure it pushes its changes immediately or should have logic
+			//to protect itself from loss of commits.
+			
+			//This case is an issue ever if a write is only done by a single process (a restart could cause this miss).
+			SCommit scommit = repo.getLatestCommit();
+			String stScommitHash = scommit!=null?scommit.getCHash():"";
+			int scommitId = scommit!=null?scommit.getId():-1;
+			
+			
+			
+			
 			if (repo.getCommitId()>0 && lrepo.getCommitId() != repo.getCommitId() ) {
 				//Need to Sync...
+			
+				Event.log(SEvent.SRepoSync, repo.getSeqId(), repo.getTenantId(), (mb) -> {
+					mb.put("fn", "svp.new_checkout");
+					mb.put("ldir", fileProv.getAbsolutePath());
+					mb.put("id", repo.getId());
+					mb.put("lrepoCommitId", lrepo.getCommitId());
+					mb.put("lrepoCommitHash", lrepo.getCommitHash());
+					mb.put("commitId", repo.getCommitId());
+					mb.put("scommitId", scommitId);
+					mb.put("scommitHash", stScommitHash);
+				});
+				
 				IRepoFileService rfs = ServerRepoFileService.get();
 				RemoteRepoSync.repoCheckout(lrepo,rfs);
+			} else {
+				Event.log(SEvent.SRepoSync, repo.getSeqId(), repo.getTenantId(), (mb) -> {
+					mb.put("fn", "svp.new_reuse");
+					mb.put("ldir", fileProv.getAbsolutePath());
+					mb.put("id", repo.getId());
+					mb.put("lrepoCommitId", lrepo.getCommitId());
+					mb.put("lrepoCommitHash", lrepo.getCommitHash());
+					mb.put("commitId", repo.getCommitId());
+					mb.put("scommitId", scommitId);
+					mb.put("scommitHash", stScommitHash);
+				});
 			}
 			fvp = new FileVaultProvider(fileProv.getAbsolutePath(), fReadOnly);
 		}
 		
 		public void repoGitPush() throws IOException{
 			IRepoFileService rfs = ServerRepoFileService.get();
-			RemoteRepoSync.repCommit(lrepo, fileProv, (props)->{
-				props.put("message","SolderVaultProvider");
-			},rfs);
+			
+			try {
+				RemoteRepoSync.repCommit(lrepo, fileProv, (props)->{
+					props.put("message","SolderVaultProvider");
+				},rfs);
+				SCommit scommit = repo.scommit;
+				String stScommitHash = scommit!=null?scommit.getCHash():"";
+				int scommitId = scommit!=null?scommit.getId():-1;
+				Event.log(SEvent.SRepoSync, repo.getSeqId(), repo.getTenantId(), (mb) -> {
+					mb.put("fn", "svp.repoGitPush");
+					mb.put("ldir", fileProv.getAbsolutePath());
+					mb.put("id", repo.getId());
+					mb.put("lrepoCommitId", lrepo.getCommitId());
+					mb.put("lrepoCommitHash", lrepo.getCommitHash());
+					mb.put("commitId", repo.getCommitId());
+					mb.put("scommitId", scommitId);
+					mb.put("scommitHash", stScommitHash);
+				});
+			}catch(Exception e) {
+				
+				SCommit scommit = repo.scommit;
+				String stScommitHash = scommit!=null?scommit.getCHash():"";
+				int scommitId = scommit!=null?scommit.getId():-1;
+				
+				Event.log(SEvent.SRepoSyncError, repo.getSeqId(), repo.getTenantId(), (mb) -> {
+					mb.put("fn", "svp.repoGitPush");
+					mb.put("ldir", fileProv.getAbsolutePath());
+					mb.put("id", repo.getId());
+					mb.put("lrepoCommitId", lrepo.getCommitId());
+					mb.put("lrepoCommitHash", lrepo.getCommitHash());
+					mb.put("commitId", repo.getCommitId());
+					mb.put("scommitId", scommitId);
+					mb.put("scommitHash", stScommitHash);
+				});
+				
+				throw SolderException.rethrow(e);
+			}
 		}
 		
 		
@@ -243,13 +324,13 @@ public class SolderVaultFactory implements IVaultFactory {
 			cacheRepo = BackgroundTask.get().createCache(SREPO_TABLE, true);
 
 			tsCommit = new SQLTableSchema(SCOMMIT_TABLE);
-			tsCommit.parseAndAdd(new String[] { "id,int,1", "repo_id,string(48),1", "chash,string(128),1",
+			tsCommit.parseAndAdd(new String[] { "id,int,1", "repo_sid,int,1","repo_id,string(48),1", "chash,string(128),1",
 					"prev_id,int,1","prev_chash,string(128),1",
 					"tenant_id,int,1", "blob_fsid,long,1", "create_date,date,1", "info,string,0,3" });
 
 			stPrimaryKey = "id";
-			aUnique = new String[] { "repo_id,prev_id,chash" };
-			aIndex = null;
+			aUnique = new String[] { "repo_sid,prev_id,chash" };
+			aIndex = new String[] {"repo_id"};
 
 			tsCommit.setCreateScriptParams(stPrimaryKey, aUnique, aIndex, Tenant.FILE_GROUP, SCOMMIT_SEQ);
 			tsCommit.setSerializerFieldType("info", FieldType.PROP);
@@ -262,7 +343,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			qCommitSeq = DriverUtil.createSequenceQuery(dbName, dbType, tsCommit, SCOMMIT_SEQ);
 			qCommitIns = DriverUtil.createInsertQuery(dbName, dbType, tsCommit);
 			qCommitSelId = DriverUtil.createSelectQuery(dbName, dbType, tsCommit, "id", "ById");
-			qCommitSelRepo = DriverUtil.createSelectQuery(dbName, dbType, tsCommit, "repo_id", "ByRepo");
+			qCommitSelRepo = DriverUtil.createSelectQuery(dbName, dbType, tsCommit, "repo_sid", "ByRepo");
 			qCommitDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsCommit, "id", "One");
 			SQLQuery.addToMap(qCommitIns, qCommitSelRepo, qCommitDelOne, qCommitSeq);
 		}
@@ -289,6 +370,7 @@ public class SolderVaultFactory implements IVaultFactory {
 			}
 			this.id = commitId;
 			Objects.requireNonNull(repo, "repo");
+			this.repoSid = repo.getSeqId();
 			this.repoId = repo.getId();
 			this.chash = Validator.require(chash, "chash", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 			this.tenantId = repo.getTenantId();
@@ -369,11 +451,13 @@ public class SolderVaultFactory implements IVaultFactory {
 		return tref.get();
 	}
 
-	static List<SCommit> selectCommitByRepo(String repoId) throws IOException {
-		String repoIdFinal = Validator.require(repoId, "repo_id", Rules.NO_NULL_EMPTY, Rules.TRIM);
+	static List<SCommit> selectCommitByRepo(int repoSeqId) throws IOException {
+		if (repoSeqId<=0 ) {
+			throw new SolderException("Invalid repoSeqId "+repoSeqId);
+		}
 		List<SCommit> list = new ArrayList<>();
 		SQLTm.get().select(repQ.qCommitSelRepo, (encoder) -> {
-			encoder.writeString("repo_id", repoIdFinal);
+			encoder.writeInt("repo_sid", repoSeqId);
 		}, (decoder) -> {
 			while (decoder.next()) {
 				SCommit scommit = new SCommit();
@@ -826,10 +910,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		}
 
 		public synchronized void repInit() throws IOException {
-			Event.log(SEvent.SRepoSync, sid, tenantId, (mb) -> {
-				mb.put("table", "srepo");
-				mb.put("id", id);
-			});
+			
 
 			SyncLocalRepo syncCache = SyncLocalRepo.get(SyncLocalRepo.DEFAULT);
 			File fileLocalRepo = syncCache.ensureSyncFolder(id);
@@ -838,6 +919,24 @@ public class SolderVaultFactory implements IVaultFactory {
 				
 				SLocalRepo lrepo = new SLocalRepo(this, fileLocalRepo,true);
 				Objects.requireNonNull(rfs,"Repo File Service");
+				
+				String stScommitHash = scommit!=null?scommit.getCHash():"";
+				int scommitId = scommit!=null?scommit.getId():-1;
+				
+				Event.log(SEvent.SRepoSync, sid, tenantId, (mb) -> {
+					mb.put("fn", "repInit");
+					mb.put("ldir", fileLocalRepo.getAbsolutePath());
+					mb.put("table", "srepo");
+					mb.put("id", id);
+					mb.put("lrepoCommitId", lrepo.getCommitId());
+					mb.put("lrepoCommitHash", lrepo.getCommitHash());
+					mb.put("commitId", getCommitId());
+					mb.put("scommitId", scommitId);
+					mb.put("scommitHash", stScommitHash);
+				});
+				
+				//For init is Fine, We want to overwrite even somethis there.
+				
 				if (getCommitId() > 0) {
 					// Repository has commits..
 					// Get the Latest..
@@ -851,8 +950,9 @@ public class SolderVaultFactory implements IVaultFactory {
 				
 			} catch (Exception e) {
 				Event.log(SEvent.SRepoSyncError, sid, tenantId, (mb) -> {
-					mb.put("table", "srepo`");
+					mb.put("fn", "repInit");
 					mb.put("id", id);
+					mb.put("ldir", fileLocalRepo.getAbsolutePath());
 					mb.put("error", PrintUtils.getStackTrace(e));
 				});
 				throw SolderException.rethrow(e);
@@ -884,7 +984,7 @@ public class SolderVaultFactory implements IVaultFactory {
 		}
 
 		public List<SCommit> getAllCommit() throws IOException {
-			List<SCommit> listCommits = selectCommitByRepo(this.id);
+			List<SCommit> listCommits = selectCommitByRepo(sid);
 			Collections.sort(listCommits);
 			return listCommits;
 		}

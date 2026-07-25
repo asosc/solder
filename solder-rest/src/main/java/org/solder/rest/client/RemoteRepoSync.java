@@ -914,7 +914,7 @@ public class RemoteRepoSync {
 					LOG.info(String.format("Add %s (Exists with matching digest %s, Nothing to do.",stRelPath,seCommit.digest));
 					fCopy=false;
 				} else {
-					LOG.info(String.format("Commit %s (Exists with non-matching curr(sz=%d;digest=%s) add=(sz=%d, digest=%s), delete and refetch.",stRelPath,seCurrent.digest,seCurrent.size,seCommit.digest));
+					LOG.info(String.format("Commit %s (Exists with non-matching curr(sz=%d;digest=%s) add=(sz=%d, digest=%s), delete and refetch.",stRelPath,seCurrent.size,seCurrent.digest,seCommit.size,seCommit.digest));
 					seCurrent.file.delete();
 					if (seCurrent.file.exists()) {
 						throw new RestException("Unable to delete existing file "+seCurrent.file.getAbsolutePath());

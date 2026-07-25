@@ -52,14 +52,22 @@ public class SolderTableTest {
 
 			TableTest.init();
 			
-			SolderTestCommon.initSolder("SolderTableTest.init");
+			try {
 			
-			File fileCreate = new File(fileRoot, "SolderCreate.SQL");
-			File fileDrop = new File(fileRoot, "SolderDrop.SQL");
-			File fileQuery = new File(fileRoot, "SolderQuery.txt");
-			MSSQLUtil.printAllSchema(fileCreate, fileDrop);
-			SQLQuery.printAll(fileQuery);
-
+				SolderTestCommon.initSolder("SolderTableTest.init");
+			}finally {
+				File fileCreate = new File(fileRoot, "SolderCreate.SQL");
+				File fileDrop = new File(fileRoot, "SolderDrop.SQL");
+				File fileQuery = new File(fileRoot, "SolderQuery.txt");
+				try {
+					MSSQLUtil.printAllSchema(fileCreate, fileDrop);
+					SQLQuery.printAll(fileQuery);
+				}catch(Exception e) {
+					LOG.error("Error printing scrips",e);
+				}
+			}
+			
+			
 			CryptoScheme scheme = CryptoScheme.getDefault();
 			repoId = scheme.getUUID();
 
