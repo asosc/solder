@@ -10,6 +10,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.StopWatch;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.nimbo.aws.AwsBlobProvider;
 import org.nimbo.azure.AzureBlobProvider;
 import org.nimbo.blobs.CGRegistry;
 import org.nimbo.blobs.ContainerGroup;
@@ -74,6 +75,7 @@ public class SolderMain {
 				// Dependency first... (Runonce helps circular calls).
 				ContainerGroup.init();
 				AzureBlobProvider.init();
+				AwsBlobProvider.init();
 				new SolderVaultFactory();
 				SolderVaultFactory.init(dbFinal);
 				TSnap.init(dbFinal);

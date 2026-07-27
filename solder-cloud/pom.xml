@@ -62,6 +62,12 @@
 			<artifactId>nimbo-azure</artifactId>
 			<version>${nimbo.version}</version>
 		</dependency>
+		
+		<dependency>
+			<groupId>org.nimbo</groupId>
+			<artifactId>nimbo-aws</artifactId>
+			<version>${nimbo.version}</version>
+		</dependency>
 
 	</dependencies>
 
