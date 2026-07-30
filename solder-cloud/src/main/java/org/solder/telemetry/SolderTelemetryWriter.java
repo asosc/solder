@@ -144,7 +144,7 @@ public class SolderTelemetryWriter implements Closeable {
 	
 	public static synchronized void checkLogging() throws IOException {
 		LOG.info(String.format("SolderTelemetry checkLogging"));
-		long tThresh = TimeUnit.MINUTES.toMillis(30);
+		long tThresh = TimeUnit.MINUTES.toMillis(15);
 		long tLast = tLastWrite.get();
 		boolean fFirst = tLast==0;
 		long tNow = System.currentTimeMillis();
