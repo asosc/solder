@@ -181,21 +181,9 @@ public class SolderCLI  extends AbstractCLI {
 				
 				logConsole("id: "+repoId+"; schema="+schemaName);
 				
-				String stCommitDir = "Commits";
-				String[] aExt = new String[] {"bee"};
-				SRepo repo = SolderVaultFactory.getRepoById(repoId);
+				SRepo repo = SolderVaultFactory.ensureSRepo(repoId,schemaName,tenantId, aoId,tag);
 				
-				if (repo==null) {
-					logConsole(String.format("No previous repo found. creating.."));
-					repo = new SRepo(repoId,schemaName,tenantId,aoId,tag,stCommitDir,aExt);
-				} else {
-					logConsole(String.format("Found previous repo found. commitId=%d (date=%s) ",repo.getCommitId(),PrintUtils.print(repo.getCommitDate())));
-					if (!StringUtils.isEmpty(tag) && !CompareUtils.stringEquals(repo.getTag(),tag)) {
-						//update tag
-						logConsole(String.format("Tags of existing repo %s is different from required %s; Updating",repo.getTag(),tag));
-						repo.updateChange(tag, null);
-					}
-				}
+				logConsole(String.format("EnsureSRepo  %s schemaName=%s, tenantId=%d, aoId=%d, tag=%s",repo.getId(),repo.getSchemaName(),repo.getTenantId(),repo.getAoId(),repo.getTag()));
 				
 			}
 			break;
