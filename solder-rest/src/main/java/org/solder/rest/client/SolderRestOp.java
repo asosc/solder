@@ -13,7 +13,7 @@ public enum SolderRestOp implements RestOp {
 		CREATE("solcreate", SolderRestOp::autoboxSolder, false, false),
 		GET("solget", SolderRestOp::autoboxSolder, false, false),
 		SEARCH("solsrch",SolderRestOp::autoboxSolder,false,false),
-		UPDATE("solUpdate",SolderRestOp::autoboxSolder,false,false),
+		UPDATE("solupd",SolderRestOp::autoboxSolder,false,false),
 		DELETE("soldel",SolderRestOp::autoboxSolder,false,false),
 		GET_LATEST_COMMIT("solglc", SolderRestOp::autoboxSolder, false, false),
 		DOWNLOAD_FILE("soldf", SolderRestOp::autoboxSolder, false, true),
@@ -21,7 +21,7 @@ public enum SolderRestOp implements RestOp {
 		
 		UPLOAD_FILE("soluf", null, true, false),
 		COMMIT_UPLOAD("solcu", null, true, false);
-		
+	
 	
 	// AutoBoxers...
 		public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {
