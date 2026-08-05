@@ -28,6 +28,7 @@ import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
 import org.solder.rest.client.RemoteRepoSync.SolderEntry;
 import org.solder.rest.client.SCommitInfo;
 import org.solder.rest.client.SolderRestOp;
+import org.solder.telemetry.SolderTelemetryWriter;
 import org.solder.vsync.ServerRepoFileService;
 import org.solder.vsync.SolderSentryProvider;
 import org.solder.vsync.SolderVaultFactory;
@@ -36,6 +37,7 @@ import org.solder.vsync.SolderVaultFactory.SRepo;
 
 import com.ee.ens.AbstractHttpServlet.SCall;
 import com.ee.ens.EnServlet;
+import com.ee.ens.EnigmaRestSkeleton;
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp;
 import com.ee.rest.RestProcessor;
@@ -57,6 +59,8 @@ import com.lnk.lucene.TempFiles;
 
 
 public enum SolderRestSkeleton {
+	
+	TM_GEN_CHART(SolderRestOp.TM_GEN_CHART,SolderRestSkeleton::doTmGenChart),
 
 	CREATE(SolderRestOp.CREATE,SolderRestSkeleton::doCreate),
 	GET(SolderRestOp.GET,SolderRestSkeleton::doGet),	
@@ -151,6 +155,27 @@ public enum SolderRestSkeleton {
 	}
 	
 	// Skeletons
+	
+	static void doTmGenChart(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<String> ref = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			EnigmaRestSkeleton.doSentryCheck(SentryProvider.NAMEDOP_ADMIN);
+			File fileChart = SolderTelemetryWriter.generateCharts();
+			ref.set(fileChart.getAbsolutePath());
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeString("ret", ref.get());
+		});
+	}
+	
 	static void doCreate(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		

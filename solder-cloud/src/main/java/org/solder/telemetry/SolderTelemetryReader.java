@@ -76,7 +76,7 @@ public class SolderTelemetryReader implements Closeable{
 		}
 	}
 
-	public void generateCharts(Date dateStart,Date dateEnd,File fileOut) throws IOException{
+	public File generateCharts(Date dateStart,Date dateEnd,File fileOut) throws IOException{
 		checkOpen();
 		File fileCharts = new File(fileOut,FileNameUtil.generate("HdrHist"));
 		Validator.checkDir(fileCharts, true, "File Charts");
@@ -169,7 +169,7 @@ public class SolderTelemetryReader implements Closeable{
 			w.write("\r\n");
 		}
 		
-		
+		return fileCharts;
 		
 	}
 

@@ -130,16 +130,17 @@ public class SolderTelemetryWriter implements Closeable {
 	}
 	
 	static final AtomicLong aiGenChart = new AtomicLong(0);
+	private static  File s_fileChart = null;
 	
-	public static synchronized void generateCharts() throws IOException {
+	public static synchronized File generateCharts() throws IOException {
 		long tNow = System.currentTimeMillis();
 		long tElapsed = tNow-aiGenChart.get();
 		
 		long tThresh = TimeUnit.MINUTES.toMillis(2);
 		if (tElapsed<tThresh) {
 			//Silently return
-			LOG.info(String.format("Ignore generateCharts (tElapsed=%d) tThresh=%d ms.)" , tElapsed,tThresh));
-			return;
+			LOG.info(String.format("Ignore generateCharts (tElapsed=%d) tThresh=%d ms.) Return previous chart" , tElapsed,tThresh));
+			return s_fileChart;
 		}
 		aiGenChart.set(tNow);
 		
@@ -148,7 +149,8 @@ public class SolderTelemetryWriter implements Closeable {
 		File fileLogCharts = new File(fileLogChartRoot,FileNameUtil.generateGMT("Charts"));
 		SolderTelemetryReader reader = SolderTelemetryReader.localReader();
 		try {
-			reader.generateCharts(null,null,fileLogCharts);
+			s_fileChart = reader.generateCharts(null,null,fileLogCharts);
+			return s_fileChart;
 		}finally {
 			IOUtils.closeQuietly(reader);
 		}

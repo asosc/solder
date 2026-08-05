@@ -9,29 +9,28 @@ import com.ee.rest.RestOp;
 import com.lnk.serializer.Encoder;
 
 public enum SolderRestOp implements RestOp {
+	
+	
+	TM_GEN_CHART("tmgch",null,false,false),
+	
+	CREATE("solcreate", SolderRestOp::autoboxSolder, false, false),
+	GET("solget", SolderRestOp::autoboxSolder, false, false),
+	SEARCH("solsrch", SolderRestOp::autoboxSolder, false, false),
+	UPDATE("solupd", SolderRestOp::autoboxSolder, false, false),
+	DELETE("soldel", SolderRestOp::autoboxSolder, false, false),
+	GET_LATEST_COMMIT("solglc", SolderRestOp::autoboxSolder, false, false),
+	DOWNLOAD_FILE("soldf", SolderRestOp::autoboxSolder, false, true),
+	GEN_NEW_COMMIT_ID("solgnci", SolderRestOp::autoboxSolder, false, false),
 
-		CREATE("solcreate", SolderRestOp::autoboxSolder, false, false),
-		GET("solget", SolderRestOp::autoboxSolder, false, false),
-		SEARCH("solsrch",SolderRestOp::autoboxSolder,false,false),
-		UPDATE("solupd",SolderRestOp::autoboxSolder,false,false),
-		DELETE("soldel",SolderRestOp::autoboxSolder,false,false),
-		GET_LATEST_COMMIT("solglc", SolderRestOp::autoboxSolder, false, false),
-		DOWNLOAD_FILE("soldf", SolderRestOp::autoboxSolder, false, true),
-		GEN_NEW_COMMIT_ID("solgnci", SolderRestOp::autoboxSolder, false, false),
-		
-		UPLOAD_FILE("soluf", null, true, false),
-		COMMIT_UPLOAD("solcu", null, true, false);
-	
-	
+	UPLOAD_FILE("soluf", null, true, false), COMMIT_UPLOAD("solcu", null, true, false);
+
 	// AutoBoxers...
-		public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {
-			return (encoder) -> {
-					RestOp.addIfAvailable(encoder,fnValue,Session_KEY,"id","tschema","ao_id","rel_path","blob_fsid");
-			};
-		}
-		
-		
-	
+	public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {
+		return (encoder) -> {
+			RestOp.addIfAvailable(encoder, fnValue, Session_KEY, "id", "tschema", "ao_id", "rel_path", "blob_fsid");
+		};
+	}
+
 	String op;
 	boolean fRequestStream, fResponseStream;
 	IOFunction<IOFunction<String, String>, IOConsumer<Encoder>> fnAutoBoxer;
@@ -49,8 +48,6 @@ public enum SolderRestOp implements RestOp {
 
 		RestOp.register(this);
 	}
-	
-	
 	
 	
 

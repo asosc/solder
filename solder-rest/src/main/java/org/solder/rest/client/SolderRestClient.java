@@ -14,7 +14,6 @@ import org.solder.rest.client.RemoteRepoSync.SolderEntry;
 
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp.RestClient;
-import com.ee.rest.client.EnigmaRestClient;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.TReference;
 import com.jnk.util.Validator;
@@ -22,6 +21,18 @@ import com.jnk.util.Validator.Rules;
 
 public class SolderRestClient {
 	
+	public static String genTMChart(RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+
+		TReference<String> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.TM_GEN_CHART, (_) -> {
+			// You dont have to send this if it is false.
+
+		}, (decoder) -> {
+			ret.set(decoder.readString("ret"));
+		});
+		return ret.get();
+	}
 	
 	public static SRepoInfo createRepo(String repoId,String schemaName,int aoId,String tag, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
