@@ -204,6 +204,7 @@ public class SolderVaultFactory implements IVaultFactory {
 					mb.put("commitId", repo.getCommitId());
 					mb.put("scommitId", scommitId);
 					mb.put("scommitHash", stScommitHash);
+					mb.put("error", PrintUtils.getStackTrace(e));
 				});
 				
 				throw SolderException.rethrow(e);
