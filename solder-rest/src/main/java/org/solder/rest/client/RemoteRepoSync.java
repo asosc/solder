@@ -7,6 +7,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -31,6 +34,7 @@ import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.apache.commons.io.function.IOConsumer;
 import org.apache.commons.io.output.NullOutputStream;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.StopWatch;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -46,6 +50,7 @@ import com.jnk.util.CompareUtils;
 import com.jnk.util.MapBuilder;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.RelPath;
+import com.jnk.util.StopWatchUtil;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
 import com.lnk.lucene.LBytesRefBuilder;
@@ -86,6 +91,110 @@ public class RemoteRepoSync {
 			IOUtils.closeQuietly(dos, is);
 		}
 
+	}
+
+	/** Sample size for sparse digests (first/last/middle chunks). */
+	public static final int SPARSE_SAMPLE_SIZE = 4096;
+	/** Cap on middle-region samples for large files. */
+	public static final int SPARSE_MAX_MIDDLE_SAMPLES = 8;
+
+	/**
+	 * Fast sparse/sample digest for change detection (not for integrity).
+	 * <p>
+	 * Hashes file length, first 4KiB, last 4KiB, and one or more
+	 * deterministically spaced 4KiB samples from the middle region.
+	 * Small files ({@code <= 8KiB}) are hashed in full.
+	 * <p>
+	 * Currently uses SHA-256 over the samples only (no Guava/Murmur dependency).
+	 * A project-owned fast hash utility can replace the hasher later; keep the
+	 * sampling layout stable if digests are ever persisted across upgrades.
+	 * Do not use this as a substitute for {@link #computeDigest(File)} where
+	 * byte-exact integrity is required.
+	 */
+	public static String computeSparseDigest(File file) throws IOException {
+		Objects.requireNonNull(file, "file");
+		Validator.checkFile(file, "file");
+
+		final int sample = SPARSE_SAMPLE_SIZE;
+		long size = file.length();
+
+		MessageDigest md = tlMessageDigest.get();
+		md.reset();
+		// Length is part of the fingerprint so size changes always differ.
+		md.update(ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(size).array());
+
+		if (size <= 0L) {
+			return PrintUtils.toHexString(md.digest());
+		}
+
+		try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+			byte[] buf = new byte[sample];
+
+			if (size <= (long) sample * 2L) {
+				// Small file: first+last would overlap; hash entire content.
+				int remaining = (int) size;
+				while (remaining > 0) {
+					int n = raf.read(buf, 0, Math.min(sample, remaining));
+					if (n < 0) {
+						throw new RestException("Unexpected EOF reading " + file.getAbsolutePath());
+					}
+					md.update(buf, 0, n);
+					remaining -= n;
+				}
+				return PrintUtils.toHexString(md.digest());
+			}
+
+			// First 4KiB
+			raf.seek(0L);
+			raf.readFully(buf);
+			md.update(buf);
+
+			// Last 4KiB
+			raf.seek(size - sample);
+			raf.readFully(buf);
+			md.update(buf);
+
+			// Middle region [sample, size - sample)
+			long midStart = sample;
+			long midEnd = size - sample;
+			long midLen = midEnd - midStart;
+
+			if (midLen > 0L) {
+				int nSamples;
+				if (midLen <= sample) {
+					nSamples = 1;
+				} else {
+					nSamples = (int) Math.min(SPARSE_MAX_MIDDLE_SAMPLES, midLen / sample);
+					if (nSamples < 1) {
+						nSamples = 1;
+					}
+				}
+
+				for (int i = 0; i < nSamples; i++) {
+					long offset;
+					long readLen = Math.min(sample, midLen);
+					if (nSamples == 1) {
+						// Center the sample window in the middle region.
+						offset = midStart + (midLen - readLen) / 2L;
+					} else {
+						// Evenly space sample starts across the middle region.
+						offset = midStart + (i * (midLen - sample)) / (nSamples - 1);
+					}
+					if (offset < midStart) {
+						offset = midStart;
+					}
+					if (offset + readLen > midEnd) {
+						offset = midEnd - readLen;
+					}
+					int toRead = (int) readLen;
+					raf.seek(offset);
+					raf.readFully(buf, 0, toRead);
+					md.update(buf, 0, toRead);
+				}
+			}
+		}
+
+		return PrintUtils.toHexString(md.digest());
 	}
 	
 	//Remote objects will call server.
@@ -145,17 +254,37 @@ public class RemoteRepoSync {
 
 		public SolderEntry() {
 		}
+		
+		void verifyPrev(SolderEntry sePrev,File file) throws IOException {
+			if (sePrev != null) {
+				if (!CompareUtils.stringEquals(stRelPath, sePrev.stRelPath)) {
+					throw new RestException(
+							String.format("RelPath mismatch for %s (expect %s)", stRelPath, sePrev.getRelPath()));
+				}
+				if (etype != sePrev.etype) {
+					throw new RestException(
+							String.format("Type mismatch for %s; got %s (expect %s)", stRelPath,etype.name(), sePrev.getType().name()));
+				}
+				
+				if (sePrev.size != file.length() || sePrev.tModified!=file.lastModified()) {
+					throw new RestException(
+							String.format("File attribute mismatch %s got (size=%d,lastMod=%d) expect (size=%d,lastMod=%d) ",stRelPath,file.length(),file.lastModified(),sePrev.size,sePrev.tModified));
+				}
+			}
+		}
 
-		public SolderEntry(String relPath, EntryType etype, File file, long blobFsId, int commitId) throws IOException {
+		public SolderEntry(String relPath, EntryType etype, File file, long blobFsId, int commitId,SolderEntry sePrev) throws IOException {
 			requireSafeRelPath(relPath);
 			Objects.requireNonNull(etype);
 
 			Objects.requireNonNull(file, "file");
 			this.stRelPath = relPath;
 			this.etype = etype;
+			verifyPrev(sePrev,file);
+			
 			this.tModified = file.lastModified();
 			this.size = file.length();
-			this.digest = computeDigest(file);
+			this.digest = sePrev==null?computeDigest(file):sePrev.digest;
 			this.blobFsId = blobFsId;
 			this.commitId = commitId;
 
@@ -511,7 +640,9 @@ public class RemoteRepoSync {
 			return FileUtils.listFiles(fileRoot, getFileFilter(), dirFilter);
 		}
 
-		public Map<String, SolderEntry> createEntryMap() throws IOException {
+		public Map<String, SolderEntry> createEntryMap(Map<String, SolderEntry> mapDotSolder) throws IOException {
+			// Prior map may be empty but must be non-null (git-like: reuse digest when size+mtime match).
+			Objects.requireNonNull(mapDotSolder,"map dot solder");
 			Map<String, SolderEntry> mapEntriesNow = new TreeMap<>();
 			Collection<File> collFile = scan();
 
@@ -523,7 +654,23 @@ public class RemoteRepoSync {
 			for (File file : collFile) {
 				String path = relPath.relativize(file.getAbsolutePath());
 				EntryType etype = (prefix == null || path.startsWith(prefix)) ? EntryType.COMMIT : EntryType.BLOB;
-				SolderEntry se = new SolderEntry(path, etype, file, -1L, 0);
+				
+				SolderEntry sePrev = mapDotSolder.get(path);
+				
+				if (sePrev !=null) {
+					// Git-like racy-git avoidance lite: trust prior digest only when size+mtime+type match.
+					boolean fDiff = sePrev.size != file.length() || sePrev.tModified != file.lastModified() || etype != sePrev.etype;
+					if (fDiff) {
+						LOG.info(String.format(
+								"Rejecting previous entry; relpath=%s (size=%d,tModified=%d,type=%s) prev=(size=%d,tModified=%d,type=%s)",
+								path, file.length(), file.lastModified(), etype.name(), sePrev.size, sePrev.tModified,
+								sePrev.etype.name()));
+						// Attributes changed: must recompute full digest (do not reuse sePrev.digest).
+						sePrev = null;
+					} 
+				}
+				
+				SolderEntry se = new SolderEntry(path, etype, file, -1L, 0,sePrev);
 				mapEntriesNow.put(path, se);
 				LOG.info(String.format("Collecting file %s", "" + se));
 			}
@@ -577,6 +724,11 @@ public class RemoteRepoSync {
 				mb.put("lrepo_chash", lRepo.chash);
 			};
 			
+			StopWatch sw = new StopWatch("CommitInfo");
+			StopWatch swEntryMap = StopWatchUtil.makeSwatch("entryMap");
+			StopWatch swCommitHash = StopWatchUtil.makeSwatch("commitHash");
+			
+			sw.start();
 			
 			
 			sbHash = new StringBuilder();
@@ -585,8 +737,13 @@ public class RemoteRepoSync {
 
 			Map<String, SolderEntry> mapSolderEntry = new LinkedHashMap<>();
 			mapSolderEntry.putAll(lRepo.mapEntry);
+			
+			LOG.info(String.format("mapSolderEntry %d entries",mapSolderEntry.size()));
+			
+			swEntryMap.resume();
 
-			Map<String, SolderEntry> mapEntriesNow = lRepo.createEntryMap();
+			Map<String, SolderEntry> mapEntriesNow = lRepo.createEntryMap(mapSolderEntry);
+			swEntryMap.suspend();
 
 			TempFiles tempFiles = TempFiles.get(TempFiles.DEFAULT);
 			String repIdLog = lRepo.srepo.getId();
@@ -612,6 +769,8 @@ public class RemoteRepoSync {
 				}
 				sbHash.append(String.format("%s %s\r\n", se.stRelPath, se.digest));
 			};
+			
+			swCommitHash.resume();
 
 			for (var entry : mapEntriesNow.entrySet()) {
 				String relPath = entry.getKey();
@@ -658,15 +817,21 @@ public class RemoteRepoSync {
 			}
 
 			byte[] aBHashBytes = sbHash.toString().getBytes(StandardCharsets.UTF_8);
+			swCommitHash.suspend();
 
 			MessageDigest md = tlMessageDigest.get();
 			md.reset();
 			md.update(aBHashBytes);
 			cHash = PrintUtils.toHexString(md.digest());
 			fNewCommit = !CompareUtils.stringEquals(lRepo.chash, cHash);
+			
+			sw.suspend();
+			
+			
 
 			LOG.info(String.format("Commit %s**(fNewCommit=%s)\r\n%s\rnHash=%s (lRepoHash=%s) (nAdd=%d,nDel=%d)",
 					lRepo.srepo.getId(), "" + fNewCommit, sbHash, cHash, lRepo.chash, listAdd.size(), listDel.size()));
+			StopWatchUtil.printTime("CommitInfo Times", sw, swEntryMap,swCommitHash);
 
 			if (fNewCommit) {
 				//Generate and set Commit Can only occur in server...
@@ -832,7 +997,8 @@ public class RemoteRepoSync {
 		}
 		String stJson = brb.get().utf8ToString();
 		CommitInfo commitInfo = LogJsonDecoder.getTL().readObject(stJson, CommitInfo.class);
-		Map<String,SolderEntry> mapEntriesNow = lrepo.createEntryMap();
+		
+		
 		
 		//Careful with overwriting etc. (first copy all new additions)
 		//Sync the commits..
@@ -840,6 +1006,9 @@ public class RemoteRepoSync {
 		
 		Map<String,SolderEntry> mapCommit = new LinkedHashMap<>();
 		mapCommit.putAll(commitInfo.getAllEntry());
+		
+		Map<String,SolderEntry> mapEntriesNow = lrepo.createEntryMap(mapCommit);
+		
 		MessageDigest md = tlMessageDigest.get();
 		for (var iter = mapCommit.values().iterator();iter.hasNext();iter.hasNext()) {
 			SolderEntry seData = iter.next();
