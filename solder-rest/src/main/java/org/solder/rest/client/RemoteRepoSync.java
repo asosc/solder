@@ -656,7 +656,7 @@ public class RemoteRepoSync {
 				EntryType etype = (prefix == null || path.startsWith(prefix)) ? EntryType.COMMIT : EntryType.BLOB;
 				
 				SolderEntry sePrev = mapDotSolder.get(path);
-				
+				SolderEntry sePrev2 = sePrev;
 				if (sePrev !=null) {
 					// Git-like racy-git avoidance lite: trust prior digest only when size+mtime+type match.
 					boolean fDiff = sePrev.size != file.length() || sePrev.tModified != file.lastModified() || etype != sePrev.etype;
@@ -671,6 +671,19 @@ public class RemoteRepoSync {
 				}
 				
 				SolderEntry se = new SolderEntry(path, etype, file, -1L, 0,sePrev);
+				// Size+type unchanged and content digest matches prior: only mtime drifted
+				// (common after checkout wrote content without restoring commit mtime).
+				// Restore mtime so the next scan can skip the full digest.
+				if (sePrev == null && sePrev2 != null && etype == sePrev2.etype && se.size == sePrev2.size
+						&& CompareUtils.stringEquals(se.digest, sePrev2.digest)) {
+					LOG.info(String.format("Repair %s modified date (want=%d, was=%d)", path, sePrev2.tModified,
+							file.lastModified()));
+					if (!file.setLastModified(sePrev2.tModified)) {
+						LOG.warn(String.format("setLastModified failed for %s", file.getAbsolutePath()));
+					}
+					// Use actual FS mtime (may be rounded); avoid recreate/verifyPrev mismatch.
+					se.tModified = file.lastModified();
+				}
 				mapEntriesNow.put(path, se);
 				LOG.info(String.format("Collecting file %s", "" + se));
 			}
@@ -1034,6 +1047,11 @@ public class RemoteRepoSync {
 					//We have it with correct digest.. Nothing to do..
 					LOG.info(String.format("Add %s (Exists with matching digest %s, Nothing to do.",stDataRelPath,seData.digest));
 					fFetch=false;
+					if (seCurrent.tModified != seData.tModified) {
+						seCurrent.file.setLastModified(seData.tModified);
+						// Local only; seData is server/commit metadata — do not mutate it.
+						seCurrent.tModified = seCurrent.file.lastModified();
+					}
 				} else {
 					LOG.info(String.format("Add %s (Exists with non-matching curr(sz=%d;digest=%s) add=(sz=%d, digest=%s), delete and refetch.",stDataRelPath,seCurrent.size,seCurrent.digest,seData.size,seData.digest));
 					seCurrent.file.delete();
@@ -1064,6 +1082,7 @@ public class RemoteRepoSync {
 				if (!CompareUtils.stringEquals(seData.digest, stDigestWritten)) {
 					throw new RestException("Digest match erorr for "+stDataRelPath+"; writtenDigest="+stDigestWritten+"; expect="+seData.digest);
 				}
+				fileDest.setLastModified(seData.getLastModified());
 			}
 		}
 		
@@ -1082,6 +1101,12 @@ public class RemoteRepoSync {
 					//We have it with correct digest.. Nothing to do..
 					LOG.info(String.format("Add %s (Exists with matching digest %s, Nothing to do.",stRelPath,seCommit.digest));
 					fCopy=false;
+					if (seCurrent.tModified != seCommit.tModified) {
+						seCurrent.file.setLastModified(seCommit.tModified);
+						// Local only; seCommit is server/commit metadata — do not mutate it.
+						seCurrent.tModified = seCurrent.file.lastModified();
+					}
+
 				} else {
 					LOG.info(String.format("Commit %s (Exists with non-matching curr(sz=%d;digest=%s) add=(sz=%d, digest=%s), delete and refetch.",stRelPath,seCurrent.size,seCurrent.digest,seCommit.size,seCommit.digest));
 					seCurrent.file.delete();
@@ -1111,6 +1136,7 @@ public class RemoteRepoSync {
 				if (!CompareUtils.stringEquals(seCommit.digest, stDigestWritten)) {
 					throw new RestException("Digest match erorr for "+stRelPath+"; writtenDigest="+stDigestWritten+"; expect="+seCommit.digest);
 				}
+				fileDest.setLastModified(seCommit.tModified);
 			}
 		}
 		
