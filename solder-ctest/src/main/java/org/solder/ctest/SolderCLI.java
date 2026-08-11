@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.apache.commons.cli.Option;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SolderException;
@@ -26,8 +25,6 @@ import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Tenant;
 import com.ee.util.Config;
 import com.jnk.junit.AbstractCLI;
-import com.jnk.util.CompareUtils;
-import com.jnk.util.PrintUtils;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
 import com.jnk.util.random.IRandom;
@@ -76,7 +73,7 @@ public class SolderCLI  extends AbstractCLI {
 
 	}
 	
-	public void printHelp() {
+	public void printHelp() throws IOException{
 		super.printHelp();
 		System.out.println("**********Op Details************\r\n");
 		System.out.println("**********Git Ops************\r\n");

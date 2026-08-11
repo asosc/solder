@@ -253,6 +253,10 @@ public class SolderVaultFactory implements IVaultFactory {
 			return fvp.deleteFile(path);
 		}
 		
+		public List<String> listFile(String path) throws IOException {
+			return fvp.listFile(path);
+		}
+		
 	}
 
 	static final String SREPO_TABLE = "srepo";

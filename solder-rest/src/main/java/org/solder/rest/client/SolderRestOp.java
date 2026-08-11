@@ -22,7 +22,8 @@ public enum SolderRestOp implements RestOp {
 	DOWNLOAD_FILE("soldf", SolderRestOp::autoboxSolder, false, true),
 	GEN_NEW_COMMIT_ID("solgnci", SolderRestOp::autoboxSolder, false, false),
 
-	UPLOAD_FILE("soluf", null, true, false), COMMIT_UPLOAD("solcu", null, true, false);
+	UPLOAD_FILE("soluf", null, true, false), 
+	COMMIT_UPLOAD("solcu", null, true, false);
 
 	// AutoBoxers...
 	public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {

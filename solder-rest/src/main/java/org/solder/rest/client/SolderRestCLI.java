@@ -81,7 +81,7 @@ public class SolderRestCLI  extends AbstractCLI {
 
 	}
 	
-	public void printHelp() {
+	public void printHelp() throws IOException{
 		super.printHelp();
 		System.out.println("**********Op Details************\r\n");
 		System.out.println("**********Git Ops************\r\n");
