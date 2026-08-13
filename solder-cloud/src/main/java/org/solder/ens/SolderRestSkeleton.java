@@ -168,7 +168,7 @@ public enum SolderRestSkeleton {
 			 if (fThrow) {
 				 Objects.requireNonNull(repo,()->"repo "+sid);
 			 }
-		} else if (id != null && id.isBlank()) {
+		} else if (id != null && !id.isBlank()) {
 			repo = SRepo.getRepoById(id);
 			if (fThrow) {
 				Objects.requireNonNull(repo,()->"repo "+id);
@@ -185,7 +185,7 @@ public enum SolderRestSkeleton {
 	static void doCreate(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<SRepo> refA = new TReference<>();
+		TReference<SRepoInfo> refA = new TReference<>();
 		// We take string param val and optional param count
 		// and return the same val as an array of count values.
 		state.readParam((decoder) -> {
@@ -209,7 +209,7 @@ public enum SolderRestSkeleton {
 			SRepo repo = SRepo.ensureSRepo(repoId, tSchema, user.getTenantId(), aoId,tag);
 			Objects.requireNonNull(repo,"repo");
 			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
-			refA.set(repo);
+			refA.set(SRepo.makeSRepoInfo(repo));
 		});
 
 		// Return
@@ -221,7 +221,7 @@ public enum SolderRestSkeleton {
 	static void doGet(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<SRepo> refRepo = new TReference<>();
+		TReference<SRepoInfo> refRepo = new TReference<>();
 		// We take string param val and optional param count
 		// and return the same val as an array of count values.
 		state.readParam((decoder) -> {
@@ -244,7 +244,7 @@ public enum SolderRestSkeleton {
 			
 			repo.refresh(null);
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
-			refRepo.set(repo);
+			refRepo.set(SRepo.makeSRepoInfo(repo));
 		});
 
 		// Return

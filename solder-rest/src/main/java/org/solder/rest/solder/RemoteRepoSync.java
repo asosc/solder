@@ -161,12 +161,12 @@ public class RemoteRepoSync {
 		SRepoInfo srepo = lrepo.getRepoInfo();
 		SCommitInfo scommit =  null;
 		
-		int commitId=-1;
+		int commitId;
 		if (commitInfo == null) {
-			commitId=-1;
-			int commitIdAsk = srepo.getCommitId();
+			// null means checkout repo tip (latest).
+			commitId = srepo.getCommitId();
 			int lcommitId = lrepo.getCommitId();
-			LOG.info(String.format("Repo %s(%d) has commit; asked=%d latest=%d (date=%s) current=%d", srepo.getId(),srepo.getSeqId(),commitIdAsk, srepo.getCommitId(),
+			LOG.info(String.format("Repo %s(%d) has commit; tip=%d (date=%s) local=%d", srepo.getId(),srepo.getSeqId(),commitId,
 					PrintUtils.print(srepo.getCommitDate()),lcommitId));
 			if (commitId <=0) {
 				//Nothing to do..
@@ -176,7 +176,7 @@ public class RemoteRepoSync {
 			scommit =  rfs.getLatestCommit(srepo);
 		} else {
 			if (commitInfo.getRepoSeqId()!=srepo.getSeqId()) {
-				throw new RestException(String.format("CommitInfo repo id mismatch; commit %d repoid %d; expect %d",commitId,commitInfo.getRepoSeqId(),srepo.getSeqId()));
+				throw new RestException(String.format("CommitInfo repo id mismatch; commit %d repoid %d; expect %d",commitInfo.getId(),commitInfo.getRepoSeqId(),srepo.getSeqId()));
 			}
 			commitId = commitInfo.getId();
 			scommit = commitInfo;

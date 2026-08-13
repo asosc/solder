@@ -41,16 +41,16 @@ public enum TmRestSkeleton {
 	static Map<String,String> s_mapContentType;
 
 	public static void init() throws IOException {
-		LOG.info("SolderRestSkeleton Init called.. isServerInit="+EnServlet.isEnServletInitCalled());
+		LOG.info("TmRestSkeleton Init called.. isServerInit="+EnServlet.isEnServletInitCalled());
 		RunOnce.ensure(s_fInit, () -> {
 			
 			if (EnServlet.isEnServletInitCalled()) {
-				SolderRestSkeleton[] a = SolderRestSkeleton.class.getEnumConstants();
-				for (SolderRestSkeleton skel : a) {
+				TmRestSkeleton[] a = TmRestSkeleton.class.getEnumConstants();
+				for (TmRestSkeleton skel : a) {
 					RestProcessor.register(skel.restOp.getOp(), skel.cHandler);
 				}
 			} else {
-				LOG.info("SolderRestSkeleton Init called, No servlet found, Not doing anything..");
+				LOG.info("TmRestSkeleton Init called, No servlet found, Not doing anything..");
 			}
 		});
 		

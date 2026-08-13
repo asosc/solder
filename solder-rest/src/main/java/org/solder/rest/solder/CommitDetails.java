@@ -182,9 +182,9 @@ public class CommitDetails implements ISerializable {
 					mapDigestToFirst.put(seFirst.getDigest(), seFirst);
 					LOG.info(String.format("Relpath %s first for %s",seFirst.getRelPath(),seFirst.getDigest()));
 				}
-				if (seFirst.getBlobFsId()<=0  && sePrev != null && sePrev.getBlobFsId()>=0) {
+				if (seFirst.getBlobFsId()<=0  && sePrev != null && sePrev.getBlobFsId()>0) {
 					//We have the content...
-					LOG.info(String.format("Found previous blobFSId for %s (digest=%s) donor=%s", sePrev.getBlobFsId(),seFirst.getRelPath(),seFirst.getDigest(),se.getRelPath()));
+					LOG.info(String.format("Found previous blobFSId %d for %s (digest=%s) donor=%s", sePrev.getBlobFsId(),seFirst.getRelPath(),seFirst.getDigest(),se.getRelPath()));
 					seFirst.setBlobFsId(sePrev.getBlobFsId());
 				}
 			} else {
@@ -260,11 +260,11 @@ public class CommitDetails implements ISerializable {
 			SolderEntry se = entry.getValue();
 			if (se.etype == EntryType.BLOB) {
 				if (se.getBlobFsId()<=0) {
-					//We need a blob.. SIS
-					SolderEntry seFirst = mapDigestToFirst.get(relPath);
-					Objects.requireNonNull(seFirst);
+					// Map is digest-keyed (first path that owns the upload for that content).
+					SolderEntry seFirst = mapDigestToFirst.get(se.getDigest());
+					Objects.requireNonNull(seFirst, () -> "first entry for digest " + se.getDigest() + " path=" + relPath);
 					if (seFirst.getBlobFsId()<=0) {
-						boolean f = listDedupUpload.contains(relPath);
+						boolean f = listDedupUpload.contains(seFirst.getRelPath());
 						throw new RestException(String.format("SolderEntry %s has no valid blobFsId; digest=%s fInDedupList=%s",seFirst,seFirst.getDigest(),Boolean.toString(f)));
 					}
 					se.setBlobFsId(seFirst.getBlobFsId());

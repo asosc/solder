@@ -61,7 +61,10 @@ public class SSCommit  implements Closeable{
 	public SCommit uploadCommit(File fileCommit) throws IOException {
 		SCommitInfo commitInfoReq = cs.getCommitInfo();
 		//Create a new 
-		return srepo.commitUpload(cs.getCommitId(),commitInfoReq, fileCommit);
+		SCommit scommit =  srepo.commitUpload(cs.getCommitId(),commitInfoReq, fileCommit);
+		//We close it commit, Abandoned session will be picked by the background task
+		close();
+		return scommit;
 	}
 	
 	

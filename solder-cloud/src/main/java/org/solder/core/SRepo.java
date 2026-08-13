@@ -557,13 +557,12 @@ public class SRepo implements ISerializable {
 		BlobFS blobFs = BlobFS.getById(blobFsId);
 		Objects.requireNonNull(blobFs, "blobFs " + blobFsId);
 
-		boolean fTypeMatch = blobFs.getOwnerApp().equals(BLOB_TYPE_SOLDER_REPO);
+	
 		// We can use only sid going forward..
-		boolean fOwnerMatch = fTypeMatch
-				&& (blobFs.getOwnerRef().equals(Integer.toString(sid)) || blobFs.getOwnerRef().equals(id));
+		boolean fOwnerMatch = blobFs.getOwnerApp().equals(BLOB_TYPE_SOLDER_REPO) && blobFs.getOwnerRef().equals(Integer.toString(sid));
 		if (!fOwnerMatch) {
-			LOG.error(String.format("Incorrect BlobFs call; id=%d; ownerApp=%s ownerRef=%s expect=(%d or %s)", blobFsId,
-					blobFs.getOwnerApp(), blobFs.getOwnerRef(), sid, id));
+			LOG.error(String.format("Incorrect BlobFs call; id=%d; ownerApp=%s ownerRef=%s expect=%d", blobFsId,
+					blobFs.getOwnerApp(), blobFs.getOwnerRef(), sid));
 			throw new SolderException("BlobFsId mismatch for " + blobFsId);
 		}
 		return blobFs;
@@ -571,18 +570,25 @@ public class SRepo implements ISerializable {
 	
 	public File downloadFile(String relPath,long blobFsId,String digestExpected) throws IOException {
 		if (StringUtils.isEmpty(relPath)) {
-			
-			//Tied to a specific commit..
-			
-			//Look for the root file.
-			SCommit scommit = getLatestCommit();
-				
-			Objects.requireNonNull(scommit,()->String.format("latest commit on %s(%d) - commitId=%d",commitId));
-			if (blobFsId != scommit.getBlobFsId()) {
-				throw new SolderException("Incorrect blobFsId expect:"+blobFsId+"; got "+scommit.getBlobFsId());
+			// Commit package blob (historical or tip). Ownership is solder_commit + this repo.
+			BlobFS blobFs = BlobFS.getById(blobFsId);
+			Objects.requireNonNull(blobFs, () -> "commit blobFs " + blobFsId);
+			// We can use only sid going forward..
+			boolean fOwnerMatch = blobFs.getOwnerApp().equals(BLOB_TYPE_SOLDER_COMMIT)
+					&& blobFs.getOwnerRef().equals(Integer.toString(sid));
+			if (!fOwnerMatch) {
+				LOG.error(String.format("Incorrect commit BlobFs call; id=%d; ownerApp=%s ownerRef=%s expect=%d",
+						blobFsId, blobFs.getOwnerApp(), blobFs.getOwnerRef(), sid));
+				throw new SolderException("Commit BlobFsId mismatch for " + blobFsId);
 			}
-			BlobFS blobFsCommit = scommit.getBlobFs();
-			BlobFile blobFile = Container.read(blobFsCommit);
+			String stDigest = blobFs.getInfo().get("digest");
+			if (!StringUtils.isEmpty(digestExpected) && !StringUtils.isEmpty(stDigest)) {
+				if (!CompareUtils.stringEquals(stDigest, digestExpected)) {
+					throw new RestException(
+							String.format("Digest expect error got %s (expect=%s)", stDigest, digestExpected));
+				}
+			}
+			BlobFile blobFile = Container.read(blobFs);
 			return blobFile.getFile();
 		} else {
 			//These are not...
@@ -631,13 +637,12 @@ public class SRepo implements ISerializable {
 		
 		BlobFS blob = BlobFS.selectByName(name);
 		if (blob != null) {
-			boolean fTypeMatch = blob.getOwnerApp().equals(BLOB_TYPE_SOLDER_REPO);
 			// We can use only sid going forward..
-			boolean fOwnerMatch = fTypeMatch
-					&& (blob.getOwnerRef().equals(Integer.toString(sid)) || blob.getOwnerRef().equals(id));
+			boolean fOwnerMatch = blob.getOwnerApp().equals(BLOB_TYPE_SOLDER_REPO)
+					&& blob.getOwnerRef().equals(Integer.toString(sid));
 			if (!fOwnerMatch) {
-				LOG.error(String.format("Incorrect BlobFs call; id=%d; ownerApp=%s ownerRef=%s expect=(%d or %s)", blob.getId(),
-						blob.getOwnerApp(), blob.getOwnerRef(), sid, id));
+				LOG.error(String.format("Incorrect BlobFs call; id=%d; ownerApp=%s ownerRef=%s expect=%d", blob.getId(),
+						blob.getOwnerApp(), blob.getOwnerRef(), sid));
 				throw new SolderException("BlobFsId mismatch for " + name);
 			}
 			return blob.getId();
