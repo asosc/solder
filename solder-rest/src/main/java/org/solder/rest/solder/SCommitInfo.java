@@ -1,14 +1,9 @@
-package org.solder.rest.client;
+package org.solder.rest.solder;
 
 import java.io.IOException;
 import java.util.Date;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
-import com.ee.rest.RestException;
-import com.jnk.util.Validator;
-import com.jnk.util.Validator.Rules;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
 import com.lnk.serializer.ISerializable;
@@ -16,44 +11,53 @@ import com.lnk.serializer.ISerializable;
 public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 	protected int id,idPrev,repoSid;
 
-	protected String chash, repoId,chashPrev;
+	protected String chash, chashPrev;
 	protected long blobFsId;
 	protected int tenantId;
 	protected Date dateCreate;
 	protected Map<String, String> mapInfo;
+	
+	//transient - Server uses it to attach itself to an object.
+	transient Object parent;
 
 	public SCommitInfo() {
 	}
-
-	public SCommitInfo(SRepoInfo repo, String chash, Map<String, String> mapInfo, int commitId) throws IOException {
-		// Generated from sequence.
-		if (commitId <= 0 || commitId <= repo.getCommitId()) {
-			throw new RestException("Invalid commitId " + commitId);
-		}
-		this.id = commitId;
-		Objects.requireNonNull(repo, "repo");
-		this.repoId = repo.getId();
-		this.chash = Validator.require(chash, "chash", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
-		this.tenantId = repo.getTenantId();
-		
-		if (repo.getCommitId()<=0) {
-			idPrev=0;
-			chashPrev = "cafe00";
-		} else {
-			idPrev = repo.getCommitId();
-			chashPrev = chash;
-		}
-
-		dateCreate = new Date();
-		if (mapInfo == null) {
-			mapInfo = new LinkedHashMap<>();
-		}
+	
+	
+	public SCommitInfo(int id,int repoSid,String chash,int idPrev,String chashPrev,int tenantId,long blobFsId,Date dateCreate,Map<String,String> mapInfo)  {
+		this.id = id;
+		this.repoSid=repoSid;
+		this.chash = chash;
+		this.idPrev = idPrev;
+		this.chashPrev = chashPrev;
+		this.tenantId = tenantId;
+		this.blobFsId = blobFsId;
+		this.dateCreate = dateCreate;
 		this.mapInfo = mapInfo;
+	}
+
+		
+	public void setParent(Object scommit) {
+		this.parent =scommit;
+	}
+	
+	public Object getParent() {
+		return parent;
 	}
 
 	public int compareTo(SCommitInfo sc) {
 		// Natural order is based on id.
-		return Integer.compare(id, sc.id);
+		if (id>0) {
+			return Integer.compare(id, sc.id);
+		} else {
+			//does not happen.. as CommitInfo should be created with valid id..
+			int diff = dateCreate.compareTo(sc.dateCreate);
+			if (diff != 0) {
+				return diff;
+			} else {
+				return chash.compareTo(sc.chash);
+			}
+		}
 	}
 
 	public boolean equals(Object o) {
@@ -73,7 +77,6 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 	public void serialize(Encoder encoder) throws IOException {
 		encoder.writeInt("id", id);
 		encoder.writeInt("repo_sid", repoSid);
-		encoder.writeString("repo_id", repoId);
 		encoder.writeString("chash", chash);
 		encoder.writeInt("prev_id", idPrev);
 		encoder.writeString("prev_chash", chashPrev);
@@ -87,7 +90,9 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 
 		id = decoder.readInt("id");
 		repoSid = decoder.readInt("repo_sid");
-		repoId = decoder.readString("repo_id");
+		//JsonDecoder by default should skip over repo_id for 
+		//client, otherwise we have init the repo again.
+		
 		chash = decoder.readString("chash");
 		idPrev = decoder.readInt("prev_id");
 		chashPrev = decoder.readString("prev_chash");
@@ -103,10 +108,6 @@ public class SCommitInfo implements ISerializable, Comparable<SCommitInfo> {
 	
 	public int getRepoSeqId() {
 		return repoSid;
-	}
-
-	public String getRepoId() {
-		return repoId;
 	}
 
 	public String getCHash() {

@@ -17,7 +17,6 @@ import org.nimbo.blobs.ContainerGroup;
 import org.solder.dbSnap.TSnap;
 import org.solder.ens.SolderRestSkeleton;
 import org.solder.telemetry.SolderTelemetryWriter;
-import org.solder.vsync.SolderVaultFactory;
 import org.solder.vsync.SyncLocalRepo;
 
 import com.ee.session.ISession;
@@ -73,11 +72,11 @@ public class SolderMain {
 			
 			try {
 				// Dependency first... (Runonce helps circular calls).
+				SRepo.init(dbFinal);
 				ContainerGroup.init();
 				AzureBlobProvider.init();
 				AwsBlobProvider.init();
 				new SolderVaultFactory();
-				SolderVaultFactory.init(dbFinal);
 				TSnap.init(dbFinal);
 				SyncLocalRepo.initDefault();
 

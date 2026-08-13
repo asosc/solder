@@ -290,7 +290,6 @@ CREATE SEQUENCE scommit_seq START WITH 1 INCREMENT BY 1 NO CYCLE NO CACHE;
 CREATE TABLE scommit (
 	id int NOT NULL,
 	repo_sid int NOT NULL,
-	repo_id nvarchar(48) NOT NULL,
 	chash nvarchar(128) NOT NULL,
 	prev_id int NOT NULL,
 	prev_chash nvarchar(128) NOT NULL,
@@ -303,8 +302,6 @@ CREATE TABLE scommit (
 	CONSTRAINT pk_scommit PRIMARY KEY (id) ON EeFileGroup,
 	CONSTRAINT uk_scommit UNIQUE(repo_sid,prev_id,chash) ON EeFileGroup
 ) ON EeFileGroup;
-
-CREATE INDEX i1_scommit  ON scommit(repo_id);
 
 
 CREATE SEQUENCE service_acct_seq START WITH 1 INCREMENT BY 1 NO CYCLE NO CACHE;
@@ -362,15 +359,14 @@ CREATE TABLE srepo (
 	tag nvarchar(255) NULL,
 	deleted tinyint NOT NULL,
 	commit_dir nvarchar(255) NULL,
-	ext_keep nvarchar(255) NOT NULL,
 	commit_id int NOT NULL,
 	commit_date datetime NOT NULL,
 	change_date datetime NOT NULL,
 	create_date datetime NOT NULL,
 	last_update datetime NOT NULL,
-	CONSTRAINT pk_srepo PRIMARY KEY (id) ON EeFileGroup,
+	CONSTRAINT pk_srepo PRIMARY KEY (sid) ON EeFileGroup,
 	CONSTRAINT uk1_srepo UNIQUE(tenant_id,tschema,ao_id) ON EeFileGroup,
-	CONSTRAINT uk2_srepo UNIQUE(sid) ON EeFileGroup
+	CONSTRAINT uk2_srepo UNIQUE(id) ON EeFileGroup
 ) ON EeFileGroup;
 
 

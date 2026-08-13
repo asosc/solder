@@ -11,12 +11,11 @@ import java.util.TreeMap;
 import org.apache.commons.cli.Option;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.solder.core.SRepo;
+import org.solder.core.ServerRepoFileService;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
-import org.solder.rest.client.SolderGitClient;
-import org.solder.vsync.ServerRepoFileService;
-import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.rest.solder.SolderGitClient;
 
 import com.aura.crypto.CryptoScheme;
 import com.ee.session.ISession;
@@ -170,17 +169,17 @@ public class SolderCLI  extends AbstractCLI {
 				
 				IRandom r = CryptoScheme.getDefault().getRandom();
 				String repoId = args[nParam++];
-				String schemaName = args[nParam++];
+				String tSchema = args[nParam++];
 				
 				int tenantId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
 				int aoId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Math.abs(r.nextInt());
 				String tag = nParam<args.length?args[nParam++]:null;
 				
-				logConsole("id: "+repoId+"; schema="+schemaName);
+				logConsole("id: "+repoId+"; schema="+tSchema);
 				
-				SRepo repo = SolderVaultFactory.ensureSRepo(repoId,schemaName,tenantId, aoId,tag);
+				SRepo repo = SRepo.ensureSRepo(repoId,tSchema,tenantId, aoId,tag);
 				
-				logConsole(String.format("EnsureSRepo  %s schemaName=%s, tenantId=%d, aoId=%d, tag=%s",repo.getId(),repo.getSchemaName(),repo.getTenantId(),repo.getAoId(),repo.getTag()));
+				logConsole(String.format("EnsureSRepo  %s schemaName=%s, tenantId=%d, aoId=%d, tag=%s",repo.getId(),repo.getTSchema(),repo.getTenantId(),repo.getAoId(),repo.getTag()));
 				
 			}
 			break;
@@ -190,12 +189,12 @@ public class SolderCLI  extends AbstractCLI {
 				initSolder("SolderCLIGitSearch",null,null);
 				
 				String repoIdPattern = nParam<args.length?args[nParam++]:"";
-				String schemaNamePattern =  nParam<args.length?args[nParam++]:"";
+				String tSchemaPattern =  nParam<args.length?args[nParam++]:"";
 				String tagFilter =  nParam<args.length?args[nParam++]:"";
 				int tenantId = nParam<args.length?TypeConversion.asInt(args[nParam++]):Tenant.ROOT_ID;
 				
-				List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdPattern, schemaNamePattern,tagFilter);
-				logConsole(String.format("Search for repo %s schema %s returned %d repos.",repoIdPattern,schemaNamePattern,list.size()));
+				List<SRepo> list = SRepo.searchRepo(tenantId, repoIdPattern, tSchemaPattern,tagFilter);
+				logConsole(String.format("Search for repo %s schema %s returned %d repos.",repoIdPattern,tSchemaPattern,list.size()));
 				for (SRepo repo : list) {
 					logConsole(String.format("\tRepo: %s",""+repo));
 				}
@@ -208,7 +207,7 @@ public class SolderCLI  extends AbstractCLI {
 				initSolder("SolderCLIGitDelete",null,null);
 				String repoId = args[nParam++];
 				
-				SRepo repo = SolderVaultFactory.getRepoById(repoId);
+				SRepo repo = SRepo.getRepoById(repoId);
 				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
 				repo.updateDelete();
 				
@@ -222,8 +221,9 @@ public class SolderCLI  extends AbstractCLI {
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
 				String repoId = args[nParam++];
+				int commitId = nParam<args.length?TypeConversion.asInt(args[nParam++]):-1;
 				initSolder("SolderCLIGitInit",fileCache,repoId);
-				gitClient.gitInit();
+				gitClient.gitInit(commitId);
 				break;
 			}
 			
@@ -233,7 +233,8 @@ public class SolderCLI  extends AbstractCLI {
 				Validator.checkDir(fileCache, false,"Git Cache");
 				String repoId = null; //load it .srepo
 				initSolder("SolderCLIGitCheckOut",fileCache,repoId);
-				gitClient.gitCheckout();
+				int commitId = nParam<args.length?TypeConversion.asInt(args[nParam++]):-1;
+				gitClient.gitCheckout(commitId);
 				
 				break;
 			}

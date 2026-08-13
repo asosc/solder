@@ -30,9 +30,9 @@ import org.apache.commons.lang3.time.StopWatch;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SEvent;
+import org.solder.core.SRepo;
 import org.solder.core.SolderException;
-import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.core.SolderVaultFactory;
 
 import com.beech.bfs.Mode;
 import com.beech.store.TRecordEncoder;
@@ -258,7 +258,7 @@ public class SolderTelemetryWriter implements Closeable {
 		String dateGroup = getDateGroupId();
 		String schemaName = String.format("%s%s", SCHEMA_NAME_PREFIX, dateGroup);
 
-		SRepo repo = SolderVaultFactory.ensureRepo(schemaName, aoId, "active");
+		SRepo repo = SRepo.ensureRepo(schemaName, aoId, "active");
 		
 		String lockName = repo.getId();
 		//Get Lock..

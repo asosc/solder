@@ -1,4 +1,4 @@
-package org.solder.rest.client;
+package org.solder.rest.util;
 
 import java.io.Closeable;
 import java.io.File;
@@ -11,6 +11,10 @@ import java.util.TreeMap;
 import org.apache.commons.cli.Option;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.solder.rest.solder.RestRepoFileService;
+import org.solder.rest.solder.SRepoInfo;
+import org.solder.rest.solder.SolderGitClient;
+import org.solder.rest.solder.SolderRestClient;
 
 import com.aura.crypto.CryptoScheme;
 import com.ee.rest.RestException;
@@ -112,10 +116,10 @@ public class SolderRestCLI  extends AbstractCLI {
 				"Delete Repo (Marks for deletion). Params: repoId");
 		
 		mapGitOpsHelp.put("init",
-				"Git init. Params:repoId");
+				"Git init. Params:repoId [commitId]");
 		
 		mapGitOpsHelp.put("checkout",
-				"Git Checkout(same as clone,rebase). Params:");
+				"Git Checkout(same as clone,rebase). Params: [commitId]");
 		mapGitOpsHelp.put("push",
 				"Git Push(same as commit and push). Params:");
 		mapGitOpsHelp.put("status",
@@ -239,12 +243,13 @@ public class SolderRestCLI  extends AbstractCLI {
 				logConsole("File Cache: "+fileCache.getAbsolutePath());
 				Validator.checkDir(fileCache, false,"Git Cache");
 				String repoId = args[nParam++];
+				int commitId = nParam<args.length?TypeConversion.asInt(args[nParam++]):-1;
 				
 				File fileRepo = new File(fileCache,repoId);
 				Validator.checkDir(fileRepo, true,"Git Repo Cache");
 				initSolder("SolderCLIGitInit",fileRepo,repoId);
 				
-				gitClient.gitInit();
+				gitClient.gitInit(commitId);
 				
 				break;
 			}
@@ -255,8 +260,9 @@ public class SolderRestCLI  extends AbstractCLI {
 				Validator.checkDir(fileCache, false,"Git Cache");
 				String repoId = null; //load it .srepo
 				initSolder("SolderCLIGitCheckout",fileCache,repoId);
+				int commitId = nParam<args.length?TypeConversion.asInt(args[nParam++]):-1;
 				
-				gitClient.gitCheckout();
+				gitClient.gitCheckout(commitId);
 				break;
 			}
 			

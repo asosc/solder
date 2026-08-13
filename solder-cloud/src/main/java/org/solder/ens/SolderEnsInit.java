@@ -22,6 +22,7 @@ public class SolderEnsInit {
 			SolderMain.init(cfg);
 			EnigmaRestSkeleton.init();
 			SolderRestSkeleton.init();
+			TmRestSkeleton.init();
 		}
 		
 	}

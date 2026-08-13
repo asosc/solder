@@ -13,8 +13,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.core.SRepo;
+import org.solder.core.SolderVaultFactory;
 
 import com.aura.crypto.CryptoScheme;
 import com.beech.store.TVault;
@@ -77,7 +77,7 @@ public class SolderTableTest {
 				idTenant = list.get(random.nextInt(list.size())).getId();
 			}
 
-			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river", idTenant, random.nextInt(),"tabletest");
+			SRepo srepo = SRepo.ensureSRepo(repoId, "river", idTenant, random.nextInt(),"tabletest");
 
 			TableTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));
 

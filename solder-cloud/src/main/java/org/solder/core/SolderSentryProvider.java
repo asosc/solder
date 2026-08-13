@@ -1,4 +1,4 @@
-package org.solder.vsync;
+package org.solder.core;
 
 import java.io.IOException;
 import java.util.HashSet;

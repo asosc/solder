@@ -1,4 +1,4 @@
-package org.solder.rest.client;
+package org.solder.rest.solder;
 
 import java.io.File;
 import java.io.IOException;
@@ -8,10 +8,8 @@ import java.util.function.Consumer;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.solder.rest.client.RemoteRepoSync.CommitInfo;
-import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
-import org.solder.rest.client.RemoteRepoSync.SLocalRepo;
 
+import com.ee.rest.RestException;
 import com.jnk.util.PrintUtils;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
@@ -41,14 +39,14 @@ public class SolderGitClient {
 		Validator.checkDir(fileCache, false, "Cache dir");
 		this.fileCache=fileCache;
 		if (StringUtils.isEmpty(repoId)) {
-			repoId = RemoteRepoSync.readLocalRepoId(fileCache);
+			repoId = SLocalRepo.readLocalRepoId(fileCache);
 		}
 		
 		this.repoId = Validator.require(repoId, "repo id",Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 		this.cConsole = cConsoleLogger;
 	}
 	
-	public void gitInit()  throws IOException {
+	public void gitInit(int commitId)  throws IOException {
 		
 		
 		logConsole(String.format("Git Init Solder Rep %s using dir %s",repoId,fileCache.getAbsolutePath()));
@@ -61,18 +59,31 @@ public class SolderGitClient {
 		int lrepoCommit = lrepo.getCommitId();
 		int repoCommit = repo.getCommitId();
 		
-		if (repoCommit>0) {
+		if (commitId<=0) {
+			//Latest..
+			commitId = repo.getCommitId();
+		}
+		
+		if (commitId>0 && commitId>repoCommit) {
+			throw new RestException(String.format("Repo %s Init ask %d; but latest %d", repo.getId(),commitId,repoCommit));
+		}
+		
+		if (commitId>0) {
 			if (lrepoCommit==0) {
 				// Repository has commits..
 				// Get the Latest..
+				
+				SCommitInfo commitInfo = service.getCommit(repo, commitId);
+				
 				logConsole(String.format("Repo %s Init to do autoCheckout prev=0; latest=%d  (date=%s)", repo.getId(), repoCommit,
 					PrintUtils.print(repo.getCommitDate())));
-				RemoteRepoSync.repoCheckout(lrepo,service);
+				RemoteRepoSync.repoCheckout(lrepo,commitInfo,service);
 			} else  {
 				logConsole(String.format("Repo %s current state (commit=%d,hash=%s); Server commit Id=%d  (date=%s).",repo.getId(),lrepoCommit,lrepo.getCommitHash(), repoCommit,
 						PrintUtils.print(repo.getCommitDate())));
 			}
 		} else {
+			
 			logConsole(String.format("Repo %s has no commits. Nothing to do", repo.getId()));
 		}
 	}
@@ -92,7 +103,7 @@ public class SolderGitClient {
 				PrintUtils.print(repo.getCommitDate())));
 	}
 	
-	public void gitCheckout()  throws IOException {
+	public void gitCheckout(int commitId)  throws IOException {
 		
 		
 		
@@ -100,10 +111,20 @@ public class SolderGitClient {
 		logConsole(String.format("Checout Solder Rep %s using dir %s",repoId,fileCache.getAbsolutePath()));
 		
 		SRepoInfo repo = service.getRepo(repoId);
+		int repoCommit = repo.getCommitId();
+		if (commitId<=0) {
+			//Latest..
+			commitId = repo.getCommitId();
+		}
 		
+		if (commitId>0 && commitId>repoCommit) {
+			throw new RestException(String.format("Repo %s Init ask %d; but latest %d", repo.getId(),commitId,repoCommit));
+		}
+		
+		SCommitInfo commitInfo = service.getCommit(repo, commitId);
 		
 		SLocalRepo lrepo = new SLocalRepo(repo, fileCache,false);
-		RemoteRepoSync.repoCheckout(lrepo,service);
+		RemoteRepoSync.repoCheckout(lrepo,commitInfo,service);
 		logConsole(String.format("Done checkout"));
 	}
 	
@@ -126,7 +147,7 @@ public class SolderGitClient {
 		}
 		
 		
-		CommitInfo commitInfo = RemoteRepoSync.repCommit(lrepo,fileCache,(mapCommit)->{
+		CommitDetails commitInfo = RemoteRepoSync.repCommit(lrepo,fileCache,(mapCommit)->{
 			mapCommit.put("cmsg", "SolderCLI gitpush");
 		},service);
 		if (!commitInfo.fNewCommit) {

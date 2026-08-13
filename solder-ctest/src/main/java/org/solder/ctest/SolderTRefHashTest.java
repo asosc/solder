@@ -11,8 +11,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.core.SRepo;
+import org.solder.core.SolderVaultFactory;
 
 import com.aura.crypto.CryptoScheme;
 import com.beech.store.TVault;
@@ -69,7 +69,7 @@ public class SolderTRefHashTest {
 			}
 			
 			
-			SRepo srepo = SolderVaultFactory.ensureSRepo(repoId, "river_refhash", idTenant, random.nextInt(),"active");
+			SRepo srepo = SRepo.ensureSRepo(repoId, "river_refhash", idTenant, random.nextInt(),"active");
 			
 
 			TRefHashTest.setTVault((mode) -> new TVault(SolderVaultFactory.TYPE, repoId, mode));

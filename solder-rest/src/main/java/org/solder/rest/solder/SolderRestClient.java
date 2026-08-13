@@ -1,38 +1,28 @@
-package org.solder.rest.client;
+package org.solder.rest.solder;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.List;
 import java.util.Objects;
 
-import org.apache.commons.io.function.IOConsumer;
 import org.apache.commons.io.function.IOSupplier;
-import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.lang3.mutable.MutableLong;
-import org.solder.rest.client.RemoteRepoSync.SolderEntry;
+import org.solder.rest.client.SolderRestOp;
 
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp.RestClient;
-import com.jnk.util.PrintUtils;
 import com.jnk.util.TReference;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
 
+
 public class SolderRestClient {
 	
-	public static String genTMChart(RestClient client) throws IOException {
-		Objects.requireNonNull(client, "client");
-
-		TReference<String> ret = new TReference<>();
-		client.doRestCall(SolderRestOp.TM_GEN_CHART, (_) -> {
-			// You dont have to send this if it is false.
-
-		}, (decoder) -> {
-			ret.set(decoder.readString("ret"));
-		});
-		return ret.get();
-	}
+	//Solder is not expected to keep all versions for ever 
+	//This is not a git, more for binary repositories and filesystem, logfiles, etc.
+	
 	
 	public static SRepoInfo createRepo(String repoId,String schemaName,int aoId,String tag, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
@@ -123,7 +113,7 @@ public class SolderRestClient {
 		
 		TReference<SCommitInfo> ret = new TReference<>();
 		client.doRestCall(SolderRestOp.GET_LATEST_COMMIT, (encoder) -> {
-			// You dont have to send this if it is false.
+			
 			encoder.writeString("id", repoId);
 		}, (decoder) -> {
 			ret.set(decoder.readObject("ret", SCommitInfo.class));
@@ -131,21 +121,45 @@ public class SolderRestClient {
 		return ret.get();
 	}
 	
-	
-	public static int  getNewCommitId(String repoId, RestClient client) throws IOException {
+	//If you ask for specific commit Id and it is valid, it will throw an error.
+	public static SCommitInfo[]  getCommits(String repoId,int[] aCommitIds, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
-		MutableInt id = new MutableInt(-1);
-		client.doRestCall(SolderRestOp.GEN_NEW_COMMIT_ID, (encoder) -> {
+		TReference<SCommitInfo[]> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.GET_COMMIT, (encoder) -> {
 			// You dont have to send this if it is false.
 			encoder.writeString("id", repoId);
+			encoder.writeIntArray("commits", aCommitIds);
 		}, (decoder) -> {
-			id.setValue(decoder.readInt("ret"));
+			ret.set(decoder.readObjectArray("ret", SCommitInfo.class));
 		});
-		return id.intValue();
+		return ret.get();
 	}
 	
-	public static void  downloadFile(String repoId,String relPath,long blobFsId,IOConsumer<SCommitInfo> cCommitInfo,IOSupplier<OutputStream> suppOs, RestClient client) throws IOException {
+	public static SCommitInfo[]  getCommits(String repoId,RestClient client) throws IOException {
+		return getCommits(repoId,null,client);
+	}
+	
+	public static SCommitInfo  getCommit(String repoId, int commitId,RestClient client) throws IOException {
+		 SCommitInfo[] a = getCommits(repoId,new int[] {commitId},client);
+		 if (a!=null) {
+			 for (SCommitInfo sci : a) {
+				 if (sci.getId() == commitId) {
+					 return sci;
+				 }
+			 }
+		 }
+		throw new RestException("Unknown commitId "+commitId+" for repo "+repoId);
+	}
+	
+	
+	
+	
+	
+
+	
+	
+	public static void  downloadFile(String repoId,String relPath,long blobFsId,String digestExpected,IOSupplier<OutputStream> suppOs, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
 		client.doStreamRestCall(SolderRestOp.DOWNLOAD_FILE, (encoder) -> {
@@ -153,23 +167,46 @@ public class SolderRestClient {
 			encoder.writeString("id", repoId);
 			encoder.writeString("rel_path", relPath);
 			encoder.writeLong("blob_fsid", blobFsId);
+			encoder.writeString("digest_expect", digestExpected);
 			
-		},null, (decoder) -> {
-			SCommitInfo commitInfo = decoder.readObject("ret", SCommitInfo.class);
-			if (cCommitInfo != null) {
-				cCommitInfo.accept(commitInfo);
-			}
+		},null, (_) -> {
+			//Digest check can be done by suppOs in addition to expectation verification.
+			//This way client can use different types of digests. (Server currently uses SHA-256)
+			//CRC32 automatically done for transport.
+			
 		},suppOs);
 		
 	}
 	
-	public static long uploadFile(String repoId,SolderEntry se,IOSupplier<InputStream> suppIs, RestClient client) throws IOException {
+	public static CommitSession beginCommit(SCommitInfo commitInfoReq,String[] aStRelPathAdd,String[] aStRelPathDel, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
+		Objects.requireNonNull(commitInfoReq,"Commit Request");
+		//Add contains both updated and new files. (Update can be found using the previous commit, if needed)
+		//Del only contain removed files
+		
+		TReference<CommitSession> ref = new TReference<>();
+		
+		client.doRestCall(SolderRestOp.BEGIN_COMMIT, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeInt("sid", commitInfoReq.getRepoSeqId());
+			encoder.writeObject("commit_req", commitInfoReq,false);
+			encoder.writeStringArray("rpath_add", aStRelPathAdd);
+			encoder.writeStringArray("rpath_del", aStRelPathDel);
+		}, (decoder) -> {
+			ref.set(decoder.readObject("ret", CommitSession.class));
+		});
+		return ref.get();
+	}
+	
+	
+	public static long uploadFile(CommitSession cs,SolderEntry se,IOSupplier<InputStream> suppIs, RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		Objects.requireNonNull(cs, "Commit Session");
 		
 		MutableLong id = new MutableLong(-1);
 		client.doStreamRestCall(SolderRestOp.UPLOAD_FILE, (encoder) -> {
 			// You dont have to send this if it is false.
-			encoder.writeString("id", repoId);
+			encoder.writeString("ecid", cs.getECId());
 			encoder.writeObject("se", se,false);
 		}, suppIs,(decoder) -> {
 			id.setValue(decoder.readLong("ret"));
@@ -178,29 +215,30 @@ public class SolderRestClient {
 	}
 	
 	
-	public static long commitUpload(String repoId,SCommitInfo sci,String digest,List<String> listDel,IOSupplier<InputStream> suppIs, RestClient client) throws IOException {
+	public static SCommitInfo uploadCommit(CommitSession cs,File fileCommit,String digest, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
-		Objects.requireNonNull(sci, "commitInfo");
+		Objects.requireNonNull(cs,"commitSession");
+		Validator.checkFile(fileCommit, "Commit File");
 		Validator.require(digest, "digest",Rules.NO_NULL_EMPTY);
-		if (sci.getBlobFsId()>0) {
-			throw new RestException("Illegal commitInfo; blobFSId is already set as "+sci.getBlobFsId());
-		}
 		
-		MutableLong id = new MutableLong(-1);
 		
-		String[] aDel = listDel == null?null:listDel.toArray(PrintUtils.EMPTY_STRING_ARRAY);
+		TReference<SCommitInfo> ref = new TReference<>();
 		
-		client.doStreamRestCall(SolderRestOp.COMMIT_UPLOAD, (encoder) -> {
+		
+		IOSupplier<InputStream> suppIs = ()->{
+			return new FileInputStream(fileCommit);
+		};
+		
+		
+		client.doStreamRestCall(SolderRestOp.UPLOAD_COMMIT, (encoder) -> {
 			// You dont have to send this if it is false.
-			encoder.writeString("id", repoId);
-			encoder.writeObject("sci", sci,false);
+			encoder.writeString("ecid", cs.getECId());
 			encoder.writeString("digest", digest);
-			encoder.writeStringArray("del_rel_paths", aDel);
 		},suppIs, (decoder) -> {
-			id.setValue(decoder.readLong("ret"));
+			ref.set(decoder.readObject("ret",SCommitInfo.class));
 		},null);
 		//We will let the Service object to set the fsId inside the commitInfo.
-		return id.longValue();
+		return Objects.requireNonNull(ref.get());
 	}
 	
 	

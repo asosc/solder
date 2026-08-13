@@ -17,9 +17,9 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.solder.core.SRepo;
 import org.solder.core.SolderException;
-import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.core.SolderVaultFactory;
 
 import com.beech.bfs.Mode;
 import com.beech.compress.IContext;
@@ -49,7 +49,7 @@ public class SolderTelemetryReader implements Closeable{
 		String dateGroup = SolderTelemetryWriter.getDateGroupId();
 		String schemaName = String.format("%s%s", SolderTelemetryWriter.SCHEMA_NAME_PREFIX, dateGroup);
 
-		SRepo repo = SolderVaultFactory.getRepoByUnique(Tenant.ROOT_ID, schemaName, aoId);
+		SRepo repo = SRepo.getRepoByUnique(Tenant.ROOT_ID, schemaName, aoId);
 		if (repo == null) {
 			throw new SolderException(String.format("No repo found for %s (aoId=%d)", schemaName, aoId));
 		}

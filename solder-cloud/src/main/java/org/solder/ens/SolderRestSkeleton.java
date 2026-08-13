@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -18,32 +19,34 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.function.IOConsumer;
+import org.apache.commons.io.function.IOSupplier;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.solder.core.SCommit;
+import org.solder.core.SRepo;
+import org.solder.core.ServerRepoFileService;
 import org.solder.core.SolderException;
-import org.solder.rest.client.RemoteRepoSync;
-import org.solder.rest.client.RemoteRepoSync.IRepoFileService;
-import org.solder.rest.client.RemoteRepoSync.SolderEntry;
-import org.solder.rest.client.SCommitInfo;
+import org.solder.core.SolderSentryProvider;
+import org.solder.core.SolderVaultFactory;
 import org.solder.rest.client.SolderRestOp;
-import org.solder.telemetry.SolderTelemetryWriter;
-import org.solder.vsync.ServerRepoFileService;
-import org.solder.vsync.SolderSentryProvider;
-import org.solder.vsync.SolderVaultFactory;
-import org.solder.vsync.SolderVaultFactory.SCommit;
-import org.solder.vsync.SolderVaultFactory.SRepo;
+import org.solder.rest.solder.CommitSession;
+import org.solder.rest.solder.IRepoFileService;
+import org.solder.rest.solder.SCommitInfo;
+import org.solder.rest.solder.SRepoInfo;
+import org.solder.rest.solder.SolderEntry;
 
 import com.ee.ens.AbstractHttpServlet.SCall;
+import com.ee.ens.beeObj.EEBeeFs;
 import com.ee.ens.EnServlet;
-import com.ee.ens.EnigmaRestSkeleton;
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp;
 import com.ee.rest.RestProcessor;
 import com.ee.rest.RestSkeletonState;
+import com.ee.rest.RestOp.RestClient;
 import com.ee.session.SessionManager;
 import com.ee.session.db.EEvent;
+import com.ee.session.db.EStateObj;
 import com.ee.session.db.Event;
 import com.ee.session.db.RolePriv;
 import com.ee.session.db.RolePriv.Scope;
@@ -60,7 +63,7 @@ import com.lnk.lucene.TempFiles;
 
 public enum SolderRestSkeleton {
 	
-	TM_GEN_CHART(SolderRestOp.TM_GEN_CHART,SolderRestSkeleton::doTmGenChart),
+	
 
 	CREATE(SolderRestOp.CREATE,SolderRestSkeleton::doCreate),
 	GET(SolderRestOp.GET,SolderRestSkeleton::doGet),	
@@ -68,10 +71,12 @@ public enum SolderRestSkeleton {
 	UPDATE(SolderRestOp.UPDATE,SolderRestSkeleton::doUpdate),
 	DELETE(SolderRestOp.DELETE,SolderRestSkeleton::doDelete),
 	GET_LATEST_COMMIT(SolderRestOp.GET_LATEST_COMMIT,SolderRestSkeleton::doGetLatestCommit),
+	GET_COMMIT(SolderRestOp.GET_COMMIT,SolderRestSkeleton::doGetCommit),
 	DOWNLOAD_FILE(SolderRestOp.DOWNLOAD_FILE,SolderRestSkeleton::doDownloadFile),
-	GEN_NEW_COMMIT_ID(SolderRestOp.GEN_NEW_COMMIT_ID,SolderRestSkeleton::doGenNewCommitId),
+	
+	BEGIN_COMMIT(SolderRestOp.BEGIN_COMMIT,SolderRestSkeleton::doBeginCommit),
 	UPLOAD_FILE(SolderRestOp.UPLOAD_FILE,SolderRestSkeleton::doUploadFile),
-	COMMIT_UPLOAD(SolderRestOp.COMMIT_UPLOAD,SolderRestSkeleton::doCommitUpload);
+	UPLOAD_COMMIT(SolderRestOp.UPLOAD_COMMIT,SolderRestSkeleton::doUploadCommit);
 
 	private static Log LOG = LogFactory.getLog(SolderRestSkeleton.class.getName());
 	
@@ -156,25 +161,26 @@ public enum SolderRestSkeleton {
 	
 	// Skeletons
 	
-	static void doTmGenChart(RestSkeletonState state) throws IOException {
-		SCall scall = (SCall)state.getCallObject();
+	static SRepo getRepo(int sid,String id,boolean fThrow) throws IOException {
+		SRepo repo =null;
+		if (sid>=0) {
+			 repo = SRepo.getRepoBySeqId(sid);
+			 if (fThrow) {
+				 Objects.requireNonNull(repo,()->"repo "+sid);
+			 }
+		} else if (id != null && id.isBlank()) {
+			repo = SRepo.getRepoById(id);
+			if (fThrow) {
+				Objects.requireNonNull(repo,()->"repo "+id);
+			}
+		} else {
+			throw new SolderException("No repo id or sid given!");
+		}
 		
-		TReference<String> ref = new TReference<>();
-		// We take string param val and optional param count
-		// and return the same val as an array of count values.
-		state.readParam((decoder) -> {
-			// int count = decoder.readInt("count");
-			scall.handleSession(decoder,null,false);
-			EnigmaRestSkeleton.doSentryCheck(SentryProvider.NAMEDOP_ADMIN);
-			File fileChart = SolderTelemetryWriter.generateCharts();
-			ref.set(fileChart.getAbsolutePath());
-		});
-
-		// Return
-		state.setSuccess((encoder) -> {
-			encoder.writeString("ret", ref.get());
-		});
+		return repo;
 	}
+	
+	
 	
 	static void doCreate(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
@@ -190,15 +196,17 @@ public enum SolderRestSkeleton {
 			Set<String> params =decoder.getAllObjectFields();
 			String repoId = decoder.readString("id");
 			repoId = Validator.require(repoId, "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			String schema = decoder.readString("tschema");
-			schema = Validator.require(schema, "schema", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			String tSchema = decoder.readString("tschema");
+			tSchema = Validator.require(tSchema, "schema", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
 			int aoId = params.contains("ao_id")?decoder.readInt("ao_id"):0;
 			String tag = params.contains("tag")?decoder.readString("tag"):null;
+			
+			LOG.info(String.format("SolderRest Op: doCreate; repoId=%s tSchema=%s aoId=%d tag=%s", repoId,tSchema,aoId,""+tag));
 
 			// Authorize before any create/update mutation.
 			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,null,user.getTenantId());
 			
-			SRepo repo = SolderVaultFactory.ensureSRepo(repoId, schema, user.getTenantId(), aoId,tag);
+			SRepo repo = SRepo.ensureSRepo(repoId, tSchema, user.getTenantId(), aoId,tag);
 			Objects.requireNonNull(repo,"repo");
 			ensureTenant(repo.getTenantId(),user.getTenantId(),repo.getId());
 			refA.set(repo);
@@ -219,11 +227,21 @@ public enum SolderRestSkeleton {
 		state.readParam((decoder) -> {
 			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
 			
-			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
+			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid,repoId,true);
+			
+			
+			
+			LOG.info(String.format("SolderRest Op: doGet; sid=%d repoId=%s", repoSid,""+repoId));
+			
+			
 			repo.refresh(null);
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			refRepo.set(repo);
@@ -238,7 +256,7 @@ public enum SolderRestSkeleton {
 	static void doSearch(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<List<SRepo>> ref = new TReference<>();
+		TReference<SRepoInfo[]> ref = new TReference<>();
 		// We take string param val and optional param count
 		// and return the same val as an array of count values.
 		state.readParam((decoder) -> {
@@ -264,45 +282,52 @@ public enum SolderRestSkeleton {
 				tagFilter = decoder.readString("tagFilter");
 			}
 			
+			LOG.info(String.format("SolderRest Op: doSearch; repoIdWild=%s schemaWild=%s tagFilter=%s", ""+repoIdWild,""+schemaWild,""+tagFilter));
+			
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,null,tenantId);
 			
-			List<SRepo> list = SolderVaultFactory.searchRepo(tenantId, repoIdWild, schemaWild,tagFilter);
-			ref.set(list);
+			List<SRepo> list = SRepo.searchRepo(tenantId, repoIdWild, schemaWild,tagFilter);
+			SRepoInfo[] a = list.stream().map((r)->SRepo.makeSRepoInfo(r)).toArray(SRepoInfo[]::new);
+			ref.set(a);
 		});
 
 		// Return
 		state.setSuccess((encoder) -> {
-			encoder.writeList("ret", ref.get(),false);
+			encoder.writeObjectArray("ret", ref.get(),false);
 		});
 	}
 
 	static void doUpdate(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<SRepo> refRepo = new TReference<>();
+		TReference<SRepoInfo> refRepo = new TReference<>();
 		// We take string param val and optional param count
 		// and return the same val as an array of count values.
 		state.readParam((decoder) -> {
 			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
 			
-			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
+			
+			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid,repoId,true);
+			
 			String tagNew = decoder.readString("tag");
 			Objects.requireNonNull(tagNew,"tagNew is null!");
+			
+			LOG.info(String.format("SolderRest Op: doGet; sid=%d repoId=%s", repoSid,""+repoId));
 					
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
 			
-			if (repo!=null) {
-				Objects.requireNonNull(repo,()->"repo "+repoId);
-				repo.refresh(null);
-				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
-				repo.updateChange(tagNew, null);
-				refRepo.set(repo);
-			} else 	{
-				throw new RestException("Unable to find repo  "+repoId);
-			}
+			repo.refresh(null);
 			
+			repo.updateChange(tagNew, null);
+			refRepo.set(SRepo.makeSRepoInfo(repo));
 			
 		});
 
@@ -315,7 +340,7 @@ public enum SolderRestSkeleton {
 	static void doDelete(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<SRepo> refRepo = new TReference<>();
+		TReference<SRepoInfo> refRepo = new TReference<>();
 		// We take string param val and optional param count
 		// and return the same val as an array of count values.
 		state.readParam((decoder) -> {
@@ -323,25 +348,30 @@ public enum SolderRestSkeleton {
 			scall.handleSession(decoder,null,false);
 			User user = (User)SessionManager.getUser();
 			
-			String repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
+			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid,repoId,false);
+			
+			LOG.info(String.format("SolderRest Op: doDelete; sid=%d repoId=%s", repoSid,""+repoId));
 			
 			if (repo!=null) {
-				Objects.requireNonNull(repo,()->"repo "+repoId);
 				repo.refresh(null);
 				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
 				repo.updateDelete();
-				refRepo.set(repo);
 			} else 	{
-				List<SRepo> list = SolderVaultFactory.getDeletedRepo(user.getTenantId(),repoId);
+				List<SRepo> list = SRepo.getDeletedRepo(user.getTenantId(),repoId);
 				if (list!=null && list.size()>0) {
-					refRepo.set(list.get(0));
+					repo = list.get(0);
 				} else {
 					throw new RestException("Unable to find repo  "+repoId);
 				}
 			}
 			
-			
+			refRepo.set(SRepo.makeSRepoInfo(repo));
 		});
 
 		// Return
@@ -350,32 +380,95 @@ public enum SolderRestSkeleton {
 		});
 	}
 	
+	
+	
+	
+	
 	static void doGetLatestCommit(RestSkeletonState state) throws IOException {
 		
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<SCommit> refA = new TReference<>();
+		TReference<SCommitInfo> ref = new TReference<>();
 		// We take string param val and optional param count
 		// and return the same val as an array of count values.
 		state.readParam((decoder) -> {
 			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
 			
 			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid,repoId,true);
 			
-			String repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
+			LOG.info(String.format("SolderRest Op: doGetLatestCommit; sid=%d repoId=%s", repoSid,""+repoId));
+			
 			//Verify Roles and Priv..
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			
-			refA.set(repo.getLatestCommit());
+			ref.set(SCommit.makeSCommitInfo(repo.getLatestCommit()));
 		});
 
 		// Return
 		state.setSuccess((encoder) -> {
-			encoder.writeObject("ret", refA.get(),false);
+			encoder.writeObject("ret", ref.get(),false);
+		});
+		
+	}
+	
+	
+	static void doGetCommit(RestSkeletonState state) throws IOException {
+		
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SCommitInfo[]> ref = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			//User user = (User)SessionManager.getUser();
+			
+			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid,repoId,true);
+			
+			int[] commitIds = params.contains("commits")?decoder.readIntArray("commits"):null;
+			if (commitIds!=null && commitIds.length==0) {
+				commitIds=null;
+			}
+			
+			LOG.info(String.format("SolderRest Op: doGetAllCommit; sid=%d repoId=%s commitIds=%s", repoSid,""+repoId,Arrays.toString(commitIds)));
+			
+			
+			//Verify Roles and Priv..
+			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
+			List<SCommit> list = repo.getAllCommit();
+			
+			
+			if (commitIds == null) {
+				ref.set(list.stream().map((r)->SCommit.makeSCommitInfo(r)).toArray(SCommitInfo[]::new));
+			} else {
+				SCommitInfo[] a = new SCommitInfo[commitIds.length];
+				for (int i=0;i<commitIds.length;i++) {
+					int id = commitIds[i];
+					SCommit sci = list.stream().filter((c)->c.getId()==id).findFirst().get();
+					a[i] = SCommit.makeSCommitInfo(Objects.requireNonNull(sci,()->"commit "+id));
+				}
+				ref.set(a);
+			}
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeObjectArray("ret", ref.get(),false);
 		});
 		
 	}
@@ -383,38 +476,50 @@ public enum SolderRestSkeleton {
 	static void doDownloadFile(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		TReference<File> refA = new TReference<>();
-		TReference<SCommit> refB = new TReference<>();
+		TReference<File> ref = new TReference<>();
+		
 		
 		state.readParam((decoder) -> {
 			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
 			
 			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
 			
-			String repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
+			String relPath = decoder.readString("rel_path");
+			long blobFsId = decoder.readLong("blob_fsid");
+			String digestExpected = params.contains("digest_expect")?decoder.readString("digest_expect") :null;
+			
+			if (blobFsId<=0) {
+				throw new SolderException(String.format("Invalid blobFsId %d",blobFsId));
+			}
+
+			
+			LOG.info(String.format("SolderRest Op: doDownloadFile; sid=%d repoId=%s replPath+%s blobFsId=%d digestExpected=%s", repoSid,""+repoId,relPath,blobFsId,digestExpected));
+			
+			SRepo repo = getRepo(repoSid,repoId,true);
+		
 			//Verify Roles and Priv..
 			doSentryCheck(SolderSentryProvider.SOLDEROP_READ,repo,-1);
 			
-			String relPath = decoder.readString("rel_path");
+			
 			if (!StringUtils.isEmpty(relPath)) {
-				RemoteRepoSync.requireSafeRelPath(relPath);
-			}
-			long blobFsId = decoder.readLong("blob_fsid");
-			SCommit scommit = repo.getLatestCommit();
-			refB.set(scommit);
-			IRepoFileService service = ServerRepoFileService.get();
-			refA.set(service.downloadFile(repo, relPath, blobFsId));
+				SolderEntry.requireSafeRelPath(relPath);
+			} 
+			
+			ref.set(repo.downloadFile(relPath, blobFsId,digestExpected));
 			
 		});
 		
 		state.setSuccess((encoder) -> {
-			encoder.writeObject("ret", refB.get(),false);
+			encoder.writeString("ret", "success");
 		}, (os)->{
-			InputStream is = new FileInputStream(refA.get());
+			InputStream is = new FileInputStream(ref.get());
 			try {
 				IOUtils.copy(is,os);
 			}finally {
@@ -424,30 +529,42 @@ public enum SolderRestSkeleton {
 		
 	}
 	
-	static void doGenNewCommitId(RestSkeletonState state) throws IOException {
+	static void doBeginCommit(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		
-		MutableInt commitId = new MutableInt(-1);
+		TReference<CommitSession> ref = new TReference<>();
 		state.readParam((decoder) -> {
-			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
 			
-			Set<String> params =decoder.getAllObjectFields();
+			//Set<String> params =decoder.getAllObjectFields();
 			
-			String repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
+			SCommitInfo commitInfoReq = decoder.readObject("commit_req",SCommitInfo.class);
+			String[] aStRelPathMod = decoder.readStringArray("rpath_add");
+			String[] aStRelPathDel = decoder.readStringArray("rpath_del");
+			
+			//RelPath are client managed, but could be used to verify the chash provided by client (Allows servers to keep
+			//consistent behavior across all clients. May be later..
+			
+			LOG.info(String.format("SolderRest Op: doBeginCommit; sid=%d cHash=%s ",commitInfoReq.getRepoSeqId(),commitInfoReq.getCHash()));
+			
+			SRepo repo = getRepo(commitInfoReq.getRepoSeqId(),null,true);
+			
 
 			// Authorize before allocating a commit sequence id.
 			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
-			commitId.setValue(repo.generateNewCommitId());
+			
+			
+			@SuppressWarnings("resource")
+			SSCommit ssc = new SSCommit(repo,commitInfoReq,aStRelPathMod,aStRelPathDel);
+			
+			ref.set(ssc.getCommitSession());
 
 		});
 
 		// Return
 		state.setSuccess((encoder) -> {
-			encoder.writeInt("ret", commitId.intValue());
+			encoder.writeObject("ret", ref.get(),false);
 		});
 	}
 	
@@ -467,7 +584,7 @@ public enum SolderRestSkeleton {
 			Validator.checkFile(fileTmp, "New Temp file");
 			os = new FileOutputStream(fileTmp);
 			
-			MessageDigest md = RemoteRepoSync.tlMessageDigest.get();
+			MessageDigest md = SolderEntry.tlMessageDigest.get();
 			md.reset();
 			DigestOutputStream dos = new DigestOutputStream(os, md);
 			IOUtils.copy(is, dos);
@@ -498,51 +615,58 @@ public enum SolderRestSkeleton {
 		
 	}
 	
+	static String requireEcid(String ecid) {
+		return Validator.require(ecid, "ecid", Rules.NO_NULL_EMPTY, Rules.TRIM);
+	}
+	
 	static void doUploadFile(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
 		TempFiles tf = TempFiles.get(TempFiles.DEFAULT);
 		
 		
-		TReference<SRepo> refSRepo = new TReference<>();
+		TReference<SSCommit> refSsc = new TReference<>();
 		TReference<SolderEntry> refA = new TReference<>();
 		state.readParam((decoder) -> {
 			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
 			
-			Set<String> params =decoder.getAllObjectFields();
-			
-			String repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
-			refSRepo.set(repo);
-			
+			//Set<String> params =decoder.getAllObjectFields();
+			String ecid = requireEcid(decoder.readString("ecid"));
 			SolderEntry se = decoder.readObject("se",SolderEntry.class);
 			Objects.requireNonNull(se,"Solder Entry!");
+			LOG.info(String.format("SolderRest Op: doUploadFile; ecid=%s se=(relPath=%s,size=%,d,digest=%s)",ecid,se.getRelPath(),se.getSize(),se.getDigest()));
+			
+			
+			
+			
+			SSCommit ssc = EStateObj.get(ecid);
+			Objects.requireNonNull(ssc,()->String.format("SSCommit ecid %s not found. Invalid or expired!", ecid));
+			
+			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,ssc.srepo,-1);
+			refSsc.set(ssc);
 			refA.set(se);
 			//Verify Roles and Priv..
-			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
+			
 		});
 		
-		SRepo repo = refSRepo.get();
+		SSCommit ssc = refSsc.get();
 		SolderEntry se = refA.get();
 		File fileTmp =null;
 		InputStream is = null;
 		try {
 			is = state.getRequestInputStream() ;
-			fileTmp = writeTemp(tf,repo.getId(),se.getDigest(),is,se.getDigest());
+			fileTmp = writeTemp(tf,ssc.srepo.getId(),se.getDigest(),is,se.getDigest());
 			se.setFile(fileTmp);
+			long blobFsId = ssc.upload(se,fileTmp);
 			
-			//Write a file and give it to the 
-			IRepoFileService service = ServerRepoFileService.get();
-			service.uploadFile(repo, se);
 			
-			if (se.getBlobFsId() <=0L) {
-				throw new SolderException("Error, bad BlobFSId "+se.getBlobFsId());
+			if (blobFsId <=0L) {
+				throw new SolderException("Error, bad BlobFSId "+blobFsId);
 			}
 			
 			state.setSuccess((encoder) -> {
-				encoder.writeLong("ret", se.getBlobFsId());
+				encoder.writeLong("ret", blobFsId);
 			});
 		} finally {
 			IOUtils.closeQuietly(is);
@@ -553,67 +677,54 @@ public enum SolderRestSkeleton {
 		}
 	}
 	
-	static void doCommitUpload(RestSkeletonState state) throws IOException {
+	
+	
+	static void doUploadCommit(RestSkeletonState state) throws IOException {
 		SCall scall = (SCall)state.getCallObject();
+		
+		
 		
 		TempFiles tf = TempFiles.get(TempFiles.DEFAULT);
 		
-		TReference<SRepo> refSRepo = new TReference<>();
-		TReference<SCommitInfo> refSci = new TReference<>();
+		TReference<SSCommit> refSsc = new TReference<>();
 		TReference<String> refDigest = new TReference<>();
-		TReference<String[]> refDelRelPaths = new TReference<>();
+		
 		
 		state.readParam((decoder) -> {
 			// int count = decoder.readInt("count");
 			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
+			//User user = (User)SessionManager.getUser();
+			//Set<String> params =decoder.getAllObjectFields();
 			
-			Set<String> params =decoder.getAllObjectFields();
+			String ecid = requireEcid(decoder.readString("ecid"));
+			String digest = requireEcid(decoder.readString("digest"));
 			
-			String repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			SRepo repo = SolderVaultFactory.getRepoById(repoId);
-			Objects.requireNonNull(repo,()->"repo "+repoId);
-			refSRepo.set(repo);
+			LOG.info(String.format("SolderRest Op: doUploadCommit; ecid=%s digest=%s",ecid,digest));
 			
+			SSCommit ssc = EStateObj.get(ecid);
+			Objects.requireNonNull(ssc,()->String.format("SSCommit ecid %s not found. Invalid or expired!", ecid));
 			
+			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,ssc.srepo,-1);
+			refSsc.set(ssc);
+			refDigest.set(digest);
 			
-			SCommitInfo sci = decoder.readObject("sci",SCommitInfo.class);
-			Objects.requireNonNull(sci,"SCommitInfo!");
-			refSci.set(sci);
-			refDigest.set(decoder.readString("digest"));
-			refDelRelPaths.set(decoder.readStringArray("del_rel_paths"));
-			String[] aDelCheck = refDelRelPaths.get();
-			if (aDelCheck != null) {
-				for (String delPath : aDelCheck) {
-					RemoteRepoSync.requireSafeRelPath(delPath);
-				}
-			}
-			
-			//Verify Roles and Priv..
-			doSentryCheck(SolderSentryProvider.SOLDEROP_WRITE,repo,-1);
 		});
 		
-		SRepo repo = refSRepo.get();
-		SCommitInfo sci = refSci.get();
-		String uploadDigest = refDigest.get();
-		String[] aDelRelPaths = refDelRelPaths.get();
 		
+		SSCommit ssc = refSsc.get();
+		String digest = refDigest.get();
 		File fileTmp =null;
 		InputStream is = null;
+
 		try {
 			is = state.getRequestInputStream() ;
-			fileTmp = writeTemp(tf,repo.getId(),sci.getCHash(),is,uploadDigest);
+			fileTmp = writeTemp(tf,ssc.srepo.getId(),ssc.commitId+"_"+digest,is,digest);
+			SCommit scommit = ssc.uploadCommit(fileTmp);
+			SCommitInfo sciRet = SCommit.makeSCommitInfo(Objects.requireNonNull(scommit));
 			
-			//Write a file and give it to the 
-			IRepoFileService service = ServerRepoFileService.get();
-			
-			SCommit scommit = (SCommit)service.createSCommit(repo, sci.getCHash(), sci.getInfo(), sci.getId());
-			
-			List<String> listDelEntryRelPath = aDelRelPaths!=null?List.of(aDelRelPaths):null;
-			service.commitUpload(repo, scommit, fileTmp,listDelEntryRelPath);
 			state.setSuccess((encoder) -> {
 				//blobFsId
-				encoder.writeLong("ret", scommit.getBlobFsId());
+				encoder.writeObject("ret", sciRet,false);
 			});
 		} finally {
 			IOUtils.closeQuietly(is);
