@@ -37,8 +37,12 @@ public class SSCommit  implements Closeable{
 	
 	public SSCommit(SRepo srepo,SCommitInfo sci,String[] aStRelPathMod,String[] aStRelPathDel) throws IOException {
 		this.srepo= Objects.requireNonNull(srepo,"srepo");
+		Objects.requireNonNull(sci, "sci");
 		this.aStRelPathMod = aStRelPathMod;
 		this.aStRelPathDel = aStRelPathDel;
+
+		// Reject if tip moved since client planned this commit (before burning a seq id).
+		srepo.requireExpectedTip(sci.getPrevId());
 		
 		ecid = EStateObj.generateECId();
 		//Server uses this, so need for ecid;

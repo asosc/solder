@@ -70,6 +70,9 @@ public class ServerRepoFileService implements IRepoFileService {
 		SRepo repo = SRepo.getRepoBySeqId(commitInfoReq.getRepoSeqId());
 		Objects.requireNonNull(repo, () -> "repo " + commitInfoReq.getRepoSeqId());
 
+		// Same tip check as SSCommit / REST beginCommit.
+		repo.requireExpectedTip(commitInfoReq.getPrevId());
+
 		// Server uses this, so need for ecid;
 		int commitId = SCommit.generateCommitId();
 		String ecid = null;

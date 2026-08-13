@@ -300,6 +300,19 @@ public class SRepo implements ISerializable {
 		return commitId;
 	}
 
+	/**
+	 * Optimistic concurrency: client must still be based on the current tip.
+	 * Call at beginCommit (fail fast) and again at commitUpload (tip may have moved).
+	 */
+	public synchronized void requireExpectedTip(int idPrevExpected) throws IOException {
+		refresh(null);
+		if (idPrevExpected != commitId) {
+			throw new SolderException(String.format(
+					"Stale commit base; client prev_id=%d server tip=%d repo=%s(%d)",
+					idPrevExpected, commitId, id, sid));
+		}
+	}
+
 	public synchronized Date getCommitDate() {
 		return dateCommit;
 	}
@@ -444,6 +457,7 @@ public class SRepo implements ISerializable {
 		}
 
 		Date dateUpdateNew = new Date();
+		int expectedTip = this.commitId;
 
 		int i = SQLTm.get().executeOne(repQ.qRepoUpdCommit, (encoder) -> {
 			encoder.writeInt("commit_id", commitIdNew);
@@ -452,14 +466,14 @@ public class SRepo implements ISerializable {
 
 			// Where clause come
 			encoder.writeInt("sid", sid);
-			encoder.writeInt("commit_id", commitId);
+			encoder.writeInt("commit_id", expectedTip);
 
 		}, null);
 		if (i == 1) {
 			Audit.audit(SAudit.SRepo_Update, sid, -1, tenantId, (cmb) -> {
 				cmb.put("id", id);
 				cmb.put("op", "rep_info");
-				cmb.putIfChanged("commit_id", commitIdNew, commitId);
+				cmb.putIfChanged("commit_id", commitIdNew, expectedTip);
 				cmb.putIfChanged("commit_date", dateCommitNew, dateCommit);
 
 			});
@@ -469,12 +483,18 @@ public class SRepo implements ISerializable {
 			this.scommit=commit;
 
 		} else {
+			// Likely lost optimistic CAS to another writer; refresh for accurate tip in the error.
+			refresh(null);
 			Event.log(SEvent.DbUpdateFail, sid, tenantId, (mb) -> {
 				mb.put("table", "srepo");
 				mb.put("id", id);
 				mb.put("commit_id", commitIdNew);
+				mb.put("expected_tip", expectedTip);
+				mb.put("actual_tip", commitId);
 			});
-			throw new SolderException("Failed to update srepo commit; id=" + id + "; commitId=" + commitIdNew);
+			throw new SolderException(String.format(
+					"Stale commit tip; update lost race repo=%s(%d) expectedTip=%d actualTip=%d newCommitId=%d",
+					id, sid, expectedTip, commitId, commitIdNew));
 		}
 
 	}
@@ -712,6 +732,9 @@ public class SRepo implements ISerializable {
 		if (commitId <=0) {
 			throw new SolderException("Invalid commitId "+commitId);
 		}
+
+		// Tip may have moved during UPLOAD_FILE*; refuse rather than parent onto a newer tip.
+		requireExpectedTip(scommitInfo.getPrevId());
 		
 		SCommit scommitToCreate = new SCommit(this, scommitInfo.getCHash(),scommitInfo.getInfo(),commitId);
 		
@@ -729,6 +752,8 @@ public class SRepo implements ISerializable {
 				tenantId, -1);
 		BlobFileTransact bft = cg.beginFileTransact(blobCommit);
 		boolean fError = true;
+		boolean fBlobCommitted = false;
+		boolean fCommitInserted = false;
 		FileOutputStream fos = null;
 		InputStream is = null;
 		try {
@@ -738,22 +763,42 @@ public class SRepo implements ISerializable {
 			DigestOutputStream dos = new DigestOutputStream(fos, md);
 			IOUtils.copy(is, dos);
 			dos.close();
-			fError = false;
 			byte[] digest = md.digest();
 			String digestNew = PrintUtils.toHexString(digest);
 			blobCommit.getInfo().put("digest", digestNew);
 			scommitToCreate.getInfo().put("digest", digestNew);
 			bft.commit();
+			fBlobCommitted = true;
 			// Create SCommit.
 			scommitToCreate.setBlobFsId(blobCommit.getId());
 			scommitToCreate.insert();
+			fCommitInserted = true;
 			updateCommit(scommitToCreate);
+			fError = false;
 			return scommitToCreate;
 
 		} finally {
 			IOUtils.closeQuietly(fos, is);
 			if (fError) {
-				bft.abort();
+				// Tip CAS / other failure after side effects: do not leave orphan commit or blob rows.
+				if (fCommitInserted) {
+					try {
+						scommitToCreate.delete();
+					} catch (Exception e) {
+						LOG.warn(String.format("Failed to rollback scommit id=%d after commitUpload failure: %s",
+								scommitToCreate.getId(), e.toString()));
+					}
+				}
+				if (fBlobCommitted) {
+					try {
+						blobCommit.delete();
+					} catch (Exception e) {
+						LOG.warn(String.format("Failed to rollback commit blob id=%d after commitUpload failure: %s",
+								blobCommit.getId(), e.toString()));
+					}
+				} else {
+					bft.abort();
+				}
 			}
 		}
 		
