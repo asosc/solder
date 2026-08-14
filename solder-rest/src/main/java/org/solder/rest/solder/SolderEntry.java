@@ -65,7 +65,7 @@ public class SolderEntry implements ISerializable {
 		}
 	}
 	
-	public static ThreadLocal<MessageDigest> tlMessageDigest = ThreadLocal.withInitial(() -> {
+	public static final ThreadLocal<MessageDigest>  tlMessageDigest = ThreadLocal.withInitial(() -> {
 		try {
 			return MessageDigest.getInstance("SHA-256");
 		} catch (Exception e) {

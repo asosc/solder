@@ -68,7 +68,6 @@ import com.lnk.lucene.RunOnce;
 import com.lnk.lucene.record.RecordUtil;
 import com.lnk.serializer.Decoder;
 import com.lnk.serializer.Encoder;
-import com.lnk.serializer.FieldType;
 import com.lnk.serializer.ISerializable;
 
 public class SRepo implements ISerializable {
@@ -649,8 +648,7 @@ public class SRepo implements ISerializable {
 		Objects.requireNonNull(cg,()->SolderMain.SOLDER_CGREG_NAME+" registry setting");
 		
 
-		MessageDigest md = SolderEntry.tlMessageDigest.get();
-		md.reset();
+		
 		CryptoScheme cs = CryptoScheme.getDefault();
 		//We use repoKey going forward
 		String name = computeBlobFsKey(se);
@@ -687,6 +685,9 @@ public class SRepo implements ISerializable {
 		FileOutputStream fos = null;
 		InputStream is = null;
 		
+		MessageDigest md = BlobFileTransact.tlMessageDigest.get();
+		md.reset();
+		
 		try {
 			is = new FileInputStream(fileContent);
 			File fileOut = bft.getFile();
@@ -697,7 +698,7 @@ public class SRepo implements ISerializable {
 
 			byte[] digest = md.digest();
 			String digestNew = PrintUtils.toHexString(digest);
-			blob.getInfo().put("digest", digestNew);
+			blob.setSizeAndDigest(fileContent.length(), digestNew);
 			if (!CompareUtils.stringEquals(digestNew, se.getDigest())) {
 				String stError = String.format("Write digest mismatch for %s. writeDigest=%s, prevCalc=%s",
 						se.getRelPath(), digestNew, se.getDigest());
@@ -739,8 +740,7 @@ public class SRepo implements ISerializable {
 		SCommit scommitToCreate = new SCommit(this, scommitInfo.getCHash(),scommitInfo.getInfo(),commitId);
 		
 		
-		MessageDigest md = SolderEntry.tlMessageDigest.get();
-		md.reset();
+		
 		
 		Map<String, String> mapInfo = new HashMap<>();
 		mapInfo.put("pid", SessionManager.getPid());
@@ -756,6 +756,8 @@ public class SRepo implements ISerializable {
 		boolean fCommitInserted = false;
 		FileOutputStream fos = null;
 		InputStream is = null;
+		MessageDigest md = BlobFileTransact.tlMessageDigest.get();
+		md.reset();
 		try {
 			is = new FileInputStream(fileCommit);
 			File fileOut = bft.getFile();
@@ -765,7 +767,8 @@ public class SRepo implements ISerializable {
 			dos.close();
 			byte[] digest = md.digest();
 			String digestNew = PrintUtils.toHexString(digest);
-			blobCommit.getInfo().put("digest", digestNew);
+			
+			blobCommit.setSizeAndDigest(fileCommit.length(), digestNew);
 			scommitToCreate.getInfo().put("digest", digestNew);
 			bft.commit();
 			fBlobCommitted = true;

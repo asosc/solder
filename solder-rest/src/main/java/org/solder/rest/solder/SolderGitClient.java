@@ -75,7 +75,7 @@ public class SolderGitClient {
 				
 				SCommitInfo commitInfo = service.getCommit(repo, commitId);
 				
-				logConsole(String.format("Repo %s Init to do autoCheckout prev=0; latest=%d  (date=%s)", repo.getId(), repoCommit,
+				logConsole(String.format("Repo %s Init to do autoCheckout commitId %d prev=0; latest=%d  (date=%s)", repo.getId(), commitId,repoCommit,
 					PrintUtils.print(repo.getCommitDate())));
 				RemoteRepoSync.repoCheckout(lrepo,commitInfo,service);
 			} else  {

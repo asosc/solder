@@ -72,6 +72,8 @@ CREATE TABLE blob (
 	info_split4 nvarchar(255) NULL,
 	info_split5 nvarchar(255) NULL,
 	info_split6 nvarchar(255) NULL,
+	size bigint NULL,
+	digest nvarchar(255) NULL,
 	CONSTRAINT pk_blob PRIMARY KEY (blob_id) ON EeFileGroup
 ) ON EeFileGroup;
 
@@ -103,6 +105,8 @@ CREATE TABLE blob_fs (
 	info_split4 nvarchar(255) NULL,
 	info_split5 nvarchar(255) NULL,
 	info_split6 nvarchar(255) NULL,
+	size bigint NULL,
+	digest nvarchar(255) NULL,
 	CONSTRAINT pk_blob_fs PRIMARY KEY (id) ON EeFileGroup,
 	CONSTRAINT uk_blob_fs UNIQUE(name) ON EeFileGroup
 ) ON EeFileGroup;
