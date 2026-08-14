@@ -35,6 +35,9 @@ import com.lnk.lucene.util.LogJsonDecoder;
 public class SRepoUtil {
 	
 	private static Log LOG = LogFactory.getLog(SRepoUtil.class.getName());
+
+	private static final String[] USAGE_HEADER = new String[] { "sid", "commitId", "RelPath", "blobFsId", "size",
+			"sizeCharged", "commitCharged", "RepoCharged", "orphanCharged" };
 	
 	public static long getUsage(SRepo srepo,File fileRepoReportRoot) throws IOException {
 		
@@ -48,7 +51,7 @@ public class SRepoUtil {
 		
 		
 		
-		File fileRepoUsage = new File(fileRepoReportRoot,srepo.getSeqId()+".usage");
+		File fileRepoUsage = new File(fileRepoReportRoot,srepo.getSeqId()+"_usage.csv");
 		Validator.checkNewFile(fileRepoUsage, true, "Repo usage file");
 		
 		
@@ -57,9 +60,7 @@ public class SRepoUtil {
 		
 		
 		
-		String[] aStHeader = new String[] {"sid","commitId","RelPath","blobFsId","size","sizeCharged","commitCharged","RepoCharged"};
-		
-		csvPrinter.printRecord((Object[])aStHeader);
+		csvPrinter.printRecord((Object[]) USAGE_HEADER);
 		
 		csvPrinter.printComment(sb.toString());
 		
@@ -83,7 +84,7 @@ public class SRepoUtil {
 			mapBlobFSRepo2.put(blobFS.getId(), blobFS);
 		}	
 		
-		int szRepoCharged=0,szOrphan=0;
+		long szRepoCharged=0,szOrphan=0;
 		
 		List<SCommit> listBadCommit = new ArrayList<>();
 		int nCommitFileError=0;
@@ -93,7 +94,7 @@ public class SRepoUtil {
 		int sid = srepo.getSeqId();
 		for (int i=listCommit.size()-1;i>=0;i--) {
 			
-			int szCommitCharged=0;
+			long szCommitCharged=0;
 			//Latest comes first..
 			SCommit commit = listCommit.get(i);
 			int commitId = commit.getId();
@@ -210,48 +211,26 @@ public class SRepoUtil {
 			//Print Orphans.
 			
 		}
-		
+
+		// File blobs not referenced by any commit package.
 		for (BlobFS blobFS : mapBlobFSRepo2.values()) {
-			
-			String relPath = blobFS.getInfo().get("path");
-			if (relPath==null) {
-				relPath="Unknown";
-			}
-			
-			long sz = blobFS.getSize();
-			if (sz<=0) {
-				//Old or not set..
-				try {
-					BlobFile blobFile = Container.read(blobFS);
-					File file = blobFile.getFile();
-					sz = file.length();
-					
-				}catch(Exception e) {
-					LOG.info(String.format("Error getting blob %d", blobFS.getId(),e));
-					sz  = -1;
-				}
-			}
-			if (sz>0) {
-				szOrphan+=sz;
-				szRepoCharged+=sz;
-			}
-			
-			listVal.clear();
-			listVal.add(sid);
-			listVal.add(blobFS.getExtId());
-			listVal.add("relPath");
-			listVal.add(blobFS.getId());
-			listVal.add(sz);
-			listVal.add(sz);
-			listVal.add(0);
-			listVal.add(szRepoCharged);
-			listVal.add(szOrphan);
-			csvPrinter.printRecord(listVal);
+			long szCharged = printOrphanRow(csvPrinter, listVal, sid, "OrphanFile", blobFS.getInfo().get("path"),
+					blobFS, szRepoCharged, szOrphan);
+			szOrphan += szCharged;
+			szRepoCharged += szCharged;
+		}
+
+		// Commit-package blobs not referenced by any SCommit row.
+		for (BlobFS blobFS : mapBlobFSCommit2.values()) {
+			long szCharged = printOrphanRow(csvPrinter, listVal, sid, "OrphanCommit", "CommitFile", blobFS,
+					szRepoCharged, szOrphan);
+			szOrphan += szCharged;
+			szRepoCharged += szCharged;
 		}
 		
 		csvPrinter.close();
 		
-		String stCsv = sb.toString();
+		String stCsv = sbCsv.toString();
 		LOG.info(String.format("\r\n****** CSV Table of SRepo ***\r\n%s\r\n*********\r\n",stCsv));
 		
 		try (FileWriter w = new FileWriter(fileRepoUsage,StandardCharsets.UTF_8)) {
@@ -262,13 +241,48 @@ public class SRepoUtil {
 		return szRepoCharged;
 		
 	}
+
+	private static long resolveBlobSize(BlobFS blobFS) {
+		long sz = blobFS.getSize();
+		if (sz > 0) {
+			return sz;
+		}
+		try {
+			BlobFile blobFile = Container.read(blobFS);
+			return blobFile.getFile().length();
+		} catch (Exception e) {
+			LOG.info(String.format("Error getting blob %d", blobFS.getId()), e);
+			return -1;
+		}
+	}
+
+	private static long printOrphanRow(CSVPrinter csvPrinter, List<Object> listVal, int sid, String kind,
+			String relPath, BlobFS blobFS, long szRepoChargedBefore, long szOrphanBefore) throws IOException {
+		if (relPath == null) {
+			relPath = "Unknown";
+		}
+		long sz = resolveBlobSize(blobFS);
+		long szCharged = sz > 0 ? sz : 0;
+		listVal.clear();
+		listVal.add(sid);
+		listVal.add(blobFS.getExtId());
+		listVal.add(kind + ":" + relPath);
+		listVal.add(blobFS.getId());
+		listVal.add(sz);
+		listVal.add(szCharged);
+		listVal.add(0);
+		listVal.add(szRepoChargedBefore + szCharged);
+		listVal.add(szOrphanBefore + szCharged);
+		csvPrinter.printRecord(listVal);
+		return szCharged;
+	}
 	
 	
-	public static long getDeletedRepoUsage(SRepo srepo,File fileRepoReportRoot) throws IOException {
+	public static long getDeletedRepoUsage(File fileRepoReportRoot) throws IOException {
 		return getAllRepoUsage( SRepo.getDeletedRepo(),fileRepoReportRoot);		
 	}
 	
-	public static long getAllRepoUsage(SRepo srepo,File fileRepoReportRoot) throws IOException {
+	public static long getAllRepoUsage(File fileRepoReportRoot) throws IOException {
 		return getAllRepoUsage( SRepo.getAll(),fileRepoReportRoot);		
 	}
 	

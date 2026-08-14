@@ -170,9 +170,8 @@ public class SRepo implements ISerializable {
 
 			qRepoDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsRepo, "sid", "One");
 			
-			
-			
-			SQLQuery.addToMap(qRepoIns, qRepoSelId, qRepoSelUnique, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne);
+			SQLQuery.addToMap(qRepoIns, qRepoSelId, qRepoSelUnique, qRepoSelDeleted, qRepoSelAll, qRepoUpdCommit,
+					qRepoUpdChange, qRepoDelOne);
 
 			cacheRepo = BackgroundTask.get().createCache(SREPO_TABLE, true);
 

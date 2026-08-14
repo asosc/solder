@@ -16,6 +16,7 @@ import org.nimbo.blobs.CGRegistry;
 import org.nimbo.blobs.ContainerGroup;
 import org.solder.dbSnap.TSnap;
 import org.solder.ens.SolderRestSkeleton;
+import org.solder.ens.TmRestSkeleton;
 import org.solder.telemetry.SolderTelemetryWriter;
 import org.solder.vsync.SyncLocalRepo;
 
@@ -105,6 +106,7 @@ public class SolderMain {
 				// Move this to out -- Ideally to the dedicated servlet that use this.
 				// For now everything gets this.
 				SolderRestSkeleton.init();
+				TmRestSkeleton.init();
 
 				SolderTelemetryWriter.init();
 
