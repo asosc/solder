@@ -123,7 +123,7 @@ public class SRepo implements ISerializable {
 
 		SQLTableSchema tsRepo;
 
-		SQLQuery qRepoIns, qRepoSelId, qRepoSelSid, qRepoSelUnique, qRepoSelTenant, qRepoUpdCommit, qRepoUpdChange,
+		SQLQuery qRepoIns, qRepoSelId, qRepoSelSid, qRepoSelUnique, qRepoSelTenant,qRepoSelDeleted,qRepoSelAll, qRepoUpdCommit, qRepoUpdChange,
 				qRepoUpdDel, qRepoDelOne, qRepoSeq;
 
 		RepQueries(String dbName, DBType dbType) throws IOException {
@@ -156,6 +156,9 @@ public class SRepo implements ISerializable {
 			qRepoSelUnique = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tenant_id,tschema,ao_id",
 					"ByUnique");
 			qRepoSelTenant = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "tenant_id,deleted", "ByTenant");
+			
+			qRepoSelDeleted = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "deleted", "Deleted");
+			qRepoSelAll = DriverUtil.createSelectQuery(dbName, dbType, tsRepo, "", "All");
 
 			qRepoUpdCommit = DriverUtil.createUpdateQuery(dbName, dbType, tsRepo, "commit_id,commit_date,last_update",
 					"sid,commit_id", "Commit");
@@ -166,6 +169,9 @@ public class SRepo implements ISerializable {
 					"sid,id", "Del");
 
 			qRepoDelOne = DriverUtil.createDeleteQuery(dbName, dbType, tsRepo, "sid", "One");
+			
+			
+			
 			SQLQuery.addToMap(qRepoIns, qRepoSelId, qRepoSelUnique, qRepoUpdCommit, qRepoUpdChange, qRepoDelOne);
 
 			cacheRepo = BackgroundTask.get().createCache(SREPO_TABLE, true);
@@ -1109,18 +1115,43 @@ public class SRepo implements ISerializable {
 		return list;
 	}
 
+	public static List<SRepo> getDeletedRepo() throws IOException {
+		List<SRepo> list = new ArrayList<>();
+		SQLTm.get().select(repQ.qRepoSelDeleted, (encoder) -> {
+			encoder.writeBoolean("deleted", true);
+		}, (decoder) -> {
+			while (decoder.next()) {
+				SRepo srepo = new SRepo();
+				srepo.deserialize(decoder);
+				list.add(srepo);
+			}
+		}, null);
+		return list;
+	}
+	
+	public static List<SRepo> getAll() throws IOException {
+		List<SRepo> list = new ArrayList<>();
+		SQLTm.get().select(repQ.qRepoSelAll, (_) -> {
+			
+		}, (decoder) -> {
+			while (decoder.next()) {
+				SRepo srepo = new SRepo();
+				srepo.deserialize(decoder);
+				list.add(srepo);
+			}
+		}, null);
+		return list;
+	}
+	
 	public static List<SRepo> getDeletedRepo(int tenantId, String id) throws IOException {
 		String idPattern = Validator.require(id, "id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 
 		SQLQuery qRepoSearch = getRepoSearch(true, false, false, false);
-
 		List<SRepo> list = new ArrayList<>();
 		SQLTm.get().select(qRepoSearch, (encoder) -> {
 			encoder.writeInt("tenant_id", tenantId);
 			encoder.writeString("id", SQLUtil.replaceWild(idPattern + "_*"));
-
 		}, (decoder) -> {
-
 			while (decoder.next()) {
 				SRepo srepo = new SRepo();
 				srepo.deserialize(decoder);

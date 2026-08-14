@@ -220,7 +220,7 @@ public class RemoteRepoSync {
 		//Check commitInfo matches with scommit..
 		if (!commitDetails.getCHash().equals(scommit.getCHash()) || commitDetails.getCommitId() != scommit.getId()) {
 			throw new RestException(
-					String.format("CommitRequest Info mismatch with given SCommitInfo object. Req=(%d,%s) info=(%d,%s)",
+					String.format("CommitDetails Info mismatch with given SCommitInfo object. Req=(%d,%s) info=(%d,%s)",
 							commitDetails.getCommitId(), commitDetails.getCHash(), scommit.getId(), scommit.getCHash()));
 		}		
 		

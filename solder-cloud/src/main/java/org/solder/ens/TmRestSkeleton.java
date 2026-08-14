@@ -3,12 +3,14 @@ package org.solder.ens;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.io.function.IOConsumer;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.rest.client.TMRestOp;
+import org.solder.telemetry.SolderRepoTelemetry;
 import org.solder.telemetry.SolderTelemetryWriter;
 
 import com.ee.ens.AbstractHttpServlet.SCall;
@@ -23,7 +25,9 @@ import com.lnk.lucene.RunOnce;
 
 public enum TmRestSkeleton {
 	
-	TM_GEN_CHART(TMRestOp.TM_GEN_CHART,TmRestSkeleton::doTmGenChart);
+	TM_GEN_CHART(TMRestOp.TM_GEN_CHART,TmRestSkeleton::doTmGenChart),
+	TM_GEN_REPO_USAGE(TMRestOp.TM_GEN_REPO_USAGE,TmRestSkeleton::doTmGenRepoUsage),
+	;
 	
 	
 	private static Log LOG = LogFactory.getLog(TmRestSkeleton.class.getName());
@@ -71,6 +75,37 @@ public enum TmRestSkeleton {
 			EnigmaRestSkeleton.doSentryCheck(SentryProvider.NAMEDOP_ADMIN);
 			File fileChart = SolderTelemetryWriter.generateCharts();
 			ref.set(fileChart.getAbsolutePath());
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeString("ret", ref.get());
+		});
+	}
+	
+	static void doTmGenRepoUsage(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<String> ref = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			int[] aSid=null;
+			Set<String> set = decoder.getAllObjectFields();
+			if (set.contains("repo_sid")) {
+				aSid = decoder.readIntArray("repo_sid");
+			}
+			boolean fDeletedOnly = false;
+			if (set.contains("fDeletedOnly")) {
+				fDeletedOnly = decoder.readBoolean("fDeletedOnly");
+			}
+			
+			EnigmaRestSkeleton.doSentryCheck(SentryProvider.NAMEDOP_ADMIN);
+			
+			File fileRepoUsage = SolderRepoTelemetry.generateRepoUsage(aSid, fDeletedOnly);
+			ref.set(fileRepoUsage.getAbsolutePath());
 		});
 
 		// Return

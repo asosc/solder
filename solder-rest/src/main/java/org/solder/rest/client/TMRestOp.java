@@ -11,7 +11,10 @@ import com.lnk.serializer.Encoder;
 //Once we have more than one function, we can make create a tmrest project.
 public enum TMRestOp implements RestOp {
 		
-	TM_GEN_CHART("tmgch",null,false,false);
+	TM_GEN_CHART("tmgch",null,false,false),
+	TM_GEN_REPO_USAGE("tmrepousage",null,false,false)
+	
+	;
 	
 	
 	String op;
