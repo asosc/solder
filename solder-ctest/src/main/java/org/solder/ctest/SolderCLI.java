@@ -12,18 +12,22 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SRepo;
+import org.solder.core.SRepoUtil;
+import org.solder.core.SRepoUtil.SRepoUsage;
 import org.solder.core.ServerRepoFileService;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
 import org.solder.rest.solder.SolderGitClient;
 
 import com.aura.crypto.CryptoScheme;
+import com.ee.rest.RestException;
 import com.ee.session.ISession;
 import com.ee.session.SessionManager;
 import com.ee.session.db.EESessionProvider;
 import com.ee.session.db.Tenant;
 import com.ee.util.Config;
 import com.jnk.junit.AbstractCLI;
+import com.jnk.util.TParseUtil;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
 import com.jnk.util.random.IRandom;
@@ -89,7 +93,7 @@ public class SolderCLI  extends AbstractCLI {
 
 	// ALL Handlers are here..
 
-	static final String[] git_Ops = { "create","checkout","push","init","status","search","delete"};
+	static final String[] git_Ops = { "create","checkout","push","init","status","search","delete","prune","orphan","usagereport","purge"};
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
 		mapGitOpsHelp.put("create", 
@@ -106,9 +110,20 @@ public class SolderCLI  extends AbstractCLI {
 				"Git Checkout(same as clone,rebase). Params:");
 		mapGitOpsHelp.put("push",
 				"Git Push(same as commit and push). Params:");
-		
 		mapGitOpsHelp.put("status",
 				"Git Status. Params:");
+		
+		mapGitOpsHelp.put("prune",
+				"Prune commits (You can/should throw away older Commits. Think each as storage snap). Params: repoId commitCsvToKeep. By default the latest commit will not be thrown away!" );
+		
+		
+		
+		mapGitOpsHelp.put("orphan",
+				"Remove orphan files from repo. Params:repoId [fDryRun]");
+		mapGitOpsHelp.put("usagereport",
+				"Generates usage report for the  repo. Params:repoId outDir");
+		mapGitOpsHelp.put("purge",
+				"Purges an alredy deleted repo. Params:repoId [fDryRun]");
 	}
 	
 	private static SolderGitClient gitClient = null;
@@ -259,6 +274,64 @@ public class SolderCLI  extends AbstractCLI {
 				initSolder("SolderCLIGitStatus",fileCache,repoId);
 				gitClient.gitStatus();
 
+				break;
+			}
+			
+			
+			case "prune": {
+				initSolder("SolderCLIPrune",null,null);
+				String repoId = args[nParam++];
+				int[] aCommitIdsToKeep= TParseUtil.parseIntCsv(args[nParam++]);
+				boolean fDryRun = nParam<args.length?TypeConversion.asBoolean(args[nParam++]):true;
+				logConsole(String.format("Prune repo %s toKeep=%s",repoId,Arrays.toString(aCommitIdsToKeep)));
+				SRepo repo = SRepo.getRepoById(repoId);
+				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
+				repo.pruneCommits(aCommitIdsToKeep, fDryRun);
+				break;
+			}
+				
+			case "orphan": {
+				initSolder("SolderCLIOrphan",null,null);
+				String repoId = args[nParam++];
+				boolean fDryRun = nParam<args.length?TypeConversion.asBoolean(args[nParam++]):true;
+				logConsole(String.format("Remove Orphan from  repo %s [fDryRun=%s]",repoId,Boolean.toString(fDryRun)));
+				SRepo repo = SRepo.getRepoById(repoId);
+				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
+				SRepoUsage sru = new SRepoUsage(repo);
+				sru.doRemoveOrphan(fDryRun);
+				break;
+			}
+			
+			
+			case "usagereport": {
+				initSolder("SolderCLIUsageReport",null,null);
+				String repoId = args[nParam++];
+				File outDir = new File(args[nParam++]);
+				outDir = outDir.getCanonicalFile();
+				Validator.checkDir(outDir,true,"Usage outDir");
+				
+				logConsole(String.format("Repo %s Usage; outDir=%s",repoId,outDir.getAbsolutePath()));
+				SRepo repo = SRepo.getRepoById(repoId);
+				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
+				long[] a = SRepoUtil.getAllRepoUsage(List.of(repo), outDir);
+				logConsole(String.format("Repo %s(%d) uses %,d bytes and has orphan %,d bytes.",repo.getId(),repo.getSeqId(), a[0],a[1]));
+				break;
+			}
+			
+			case "purge": {
+				initSolder("SolderCLIPurge",null,null);
+				String repoId = args[nParam++];
+				boolean fDryRun = nParam<args.length?TypeConversion.asBoolean(args[nParam++]):true;
+				
+				SRepo repo = SRepo.getRepoById(repoId);
+				
+				logConsole(String.format("Found repo %s (sid=%d) fDeleted=%s, fDryRun=%s",repo.getId(),repo.getSeqId(),Boolean.toString(repo.isDeleted()),Boolean.toString(fDryRun)));
+				if (!repo.isDeleted()) {
+					throw new RestException("Repo cannot be purged. Need to be marked for deletion!");
+				}
+				SRepoUsage sru = new SRepoUsage(repo);
+				sru.purgeRepo(fDryRun);
+				
 				break;
 			}
 			

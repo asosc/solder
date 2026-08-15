@@ -10,14 +10,18 @@ import java.security.MessageDigest;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -332,6 +336,33 @@ public class SRepo implements ISerializable {
 	public synchronized Date getLastDate() {
 		return dateUpdate;
 	}
+	
+	public synchronized void pruneCommits(int[] aCommitIdsToKeep,boolean fDryRun)throws IOException {
+		//We always keep the tip.
+		refresh(null);
+		int tip = this.commitId;
+		Set<Integer> setWanted = null;
+		
+		if (aCommitIdsToKeep!=null &&aCommitIdsToKeep.length>0) {
+			setWanted = Arrays.stream(aCommitIdsToKeep).boxed()
+				.collect(Collectors.toCollection(LinkedHashSet::new));
+		} else {
+			setWanted = new LinkedHashSet<>();
+		}
+		setWanted.add(tip);
+		List<SCommit> list = getAllCommit();
+		for (SCommit scommit : list) {
+			if (!setWanted.contains(scommit.getId())) {
+				LOG.info(String.format("pruneCommits to remove commit %d createDate=%s fDryRun=%s", scommit.getId(),PrintUtils.print(scommit.getCreateDate()),Boolean.toString(fDryRun)));
+				if (!fDryRun) {
+					//SRepoUtil orphan remover will remove all files not referred by other commits. 
+					scommit.delete();
+				}
+			}
+		}
+		
+		
+	}
 
 	public String toString() {
 		return RecordUtil.printJson(this, false);
@@ -351,6 +382,10 @@ public class SRepo implements ISerializable {
 			cmb.put("id", id);
 			cmb.put("schema", tSchema);
 		});
+	}
+	
+	public boolean isDeleted() {
+		return fDeleted;
 	}
 
 	public synchronized void updateChange(String tagNew, Date dateChange) throws IOException {

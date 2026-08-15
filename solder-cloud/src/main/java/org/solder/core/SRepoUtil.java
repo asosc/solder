@@ -276,10 +276,11 @@ public class SRepoUtil {
 					if (StringUtils.isEmpty(relPath)) {
 						relPath = ue.type.name();
 					}
-					LOG.info(String.format("Found Orphan to Delete %s(%d) blob=%d sz=%d fDryRun=%s", relPath,ue.blobFSId,Boolean.toString(fDryRun)));
+					
 					
 					if (!fDryRun) {
 						if (ue.fCharged&&ue.blobFS!=null) {
+							LOG.info(String.format("Found Orphan to Delete %s blob=%d sz=%d fDryRun=%s", relPath,ue.blobFSId,sz,Boolean.toString(fDryRun)));
 							try {
 								Container.delete(ue.blobFS,true);
 								nConsecError=0;
@@ -368,25 +369,22 @@ public class SRepoUtil {
 			List<Object> listVal = new ArrayList<>();
 
 			long szRepoCharged = 0, szOrphan = 0, szCommitCharged = 0;
-			;
 			int commitId = -1;
 			for (UsageEntry ue : listUE) {
 
 				if (commitId != ue.commitId) {
 					szCommitCharged = 0L;
+					commitId = ue.commitId;
 				}
 
 				if (ue.type == UEType.COMMIT) {
 					sb.setLength(0);
-					sb.append(String.format("#Commit %d blobFsId=%d fBlobFound=%s", commitId, ue.blobFSId,
+					sb.append(String.format("#Commit %d blobFsId=%d fBlobFound=%s", ue.commitId, ue.blobFSId,
 							Boolean.toString(ue.blobFS != null)));
 					csvPrinter.printComment(sb.toString());
 				}
 
-				String relPath = ue.se != null ? ue.se.getRelPath() : null;
-				if (StringUtils.isEmpty(relPath)) {
-					relPath = ue.type.name();
-				}
+				String relPath = relPathForCsv(ue);
 				long sz = Math.max(ue.szResolved, 0);
 				long szCharged = ue.fCharged ? sz : 0L;
 				if (ue.type == UEType.COMMIT || ue.type == UEType.DATA) {
@@ -394,7 +392,7 @@ public class SRepoUtil {
 				} else {
 					szOrphan += szCharged;
 				}
-				szRepoCharged += szOrphan;
+				szRepoCharged += szCharged;
 
 				listVal.clear();
 				listVal.add(ue.sid);
@@ -419,6 +417,28 @@ public class SRepoUtil {
 				w.write(stCsv);
 				w.write("\r\n");
 			}
+		}
+
+		private static String relPathForCsv(UsageEntry ue) {
+			if (ue.type == UEType.COMMIT) {
+				return "CommitFile";
+			}
+			if (ue.type == UEType.DATA) {
+				return ue.se != null ? ue.se.getRelPath() : "Unknown";
+			}
+			if (ue.type == UEType.ORPHAN_COMMIT) {
+				return "OrphanCommit:CommitFile";
+			}
+			// ORPHAN / ORPHAN_CE — preserve prior OrphanFile:<path> labeling.
+			String path = null;
+			if (ue.blobFS != null && ue.blobFS.getInfo() != null) {
+				path = ue.blobFS.getInfo().get("path");
+			}
+			if (StringUtils.isEmpty(path)) {
+				path = "Unknown";
+			}
+			String prefix = ue.type == UEType.ORPHAN_CE ? "OrphanCE" : "OrphanFile";
+			return prefix + ":" + path;
 		}
 
 		private static long resolveBlobSize(BlobFS blobFS) {
