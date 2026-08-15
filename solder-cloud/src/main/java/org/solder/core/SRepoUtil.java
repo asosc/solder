@@ -16,11 +16,13 @@ import java.util.Set;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nimbo.blobs.BlobFS;
 import org.nimbo.blobs.BlobFile;
 import org.nimbo.blobs.Container;
+import org.nimbo.blobs.NimboException;
 import org.solder.rest.solder.CommitDetails;
 import org.solder.rest.solder.SolderEntry;
 import org.solder.rest.solder.SolderEntry.EntryType;
@@ -33,267 +35,430 @@ import com.lnk.lucene.LBytesRefBuilder;
 import com.lnk.lucene.util.LogJsonDecoder;
 
 public class SRepoUtil {
-	
+
 	private static Log LOG = LogFactory.getLog(SRepoUtil.class.getName());
 
 	private static final String[] USAGE_HEADER = new String[] { "sid", "commitId", "RelPath", "blobFsId", "size",
 			"sizeCharged", "commitCharged", "RepoCharged", "orphanCharged" };
-	
-	public static long getUsage(SRepo srepo,File fileRepoReportRoot) throws IOException {
-		
-		LOG.info(String.format("Usage report for repo %s(%d) isDeleted=%s", srepo.getId(),srepo.getSeqId(),Boolean.toString(srepo.fDeleted)));
-		
-		List<SCommit> listCommit = srepo.getAllCommit();
-		
-		StringBuilder sb = new StringBuilder();
-		sb.append(String.format("#Repo sid=%d id=%s nCommits=%d tCreate=%s tLastCommit=%s\r\n", srepo.getSeqId(),srepo.getId(),listCommit.size(),
-				PrintUtils.print(srepo.getCreateDate()),PrintUtils.print(srepo.getCommitDate())));
-		
-		
-		
-		File fileRepoUsage = new File(fileRepoReportRoot,srepo.getSeqId()+"_usage.csv");
-		Validator.checkNewFile(fileRepoUsage, true, "Repo usage file");
-		
-		
-		StringBuilder sbCsv = new StringBuilder();
-		CSVPrinter csvPrinter = new CSVPrinter(sbCsv,CSVFormat.DEFAULT);
-		
-		
-		
-		csvPrinter.printRecord((Object[]) USAGE_HEADER);
-		
-		csvPrinter.printComment(sb.toString());
-		
-		List<Object> listVal = new ArrayList<>();
-		
-		Map<Long,BlobFS> mapBlobFSRepo = new LinkedHashMap<>(); 
-		Map<Long,BlobFS> mapBlobFSCommit = new LinkedHashMap<>();
-		Map<Long,BlobFS> mapBlobFSRepo2 = new LinkedHashMap<>(); 
-		Map<Long,BlobFS> mapBlobFSCommit2 = new LinkedHashMap<>();
-		
-		List<BlobFS> listBlobFSRepo = BlobFS.selectByOwner(SRepo.BLOB_TYPE_SOLDER_REPO,""+srepo.getSeqId());
-		List<BlobFS> listBlobFSCommit = BlobFS.selectByOwner(SRepo.BLOB_TYPE_SOLDER_COMMIT,""+srepo.getSeqId());
-		
-		
-		for (BlobFS blobFS : listBlobFSCommit) {
-			mapBlobFSCommit.put(blobFS.getId(), blobFS);
-			mapBlobFSCommit2.put(blobFS.getId(), blobFS);
+
+	static enum UEType {
+		COMMIT, DATA, ORPHAN, ORPHAN_CE, ORPHAN_COMMIT;
+	}
+
+	static class UsageEntry {
+		int sid, commitId;
+		long blobFSId;
+		BlobFS blobFS;
+		// The first entry that uses this blobs is charged
+		// Rest take a free ride.
+		boolean fCharged;
+		long szResolved;
+
+		UEType type;
+		SolderEntry se;
+
+		UsageEntry(int sid, int commitId, UEType type, long blobFSId, BlobFS blobFS, boolean fCharged) {
+			this.sid = sid;
+			this.commitId = commitId;
+			this.type = Objects.requireNonNull(type);
+			this.blobFSId = blobFSId;
+			this.blobFS = blobFS;
+			this.fCharged = blobFS != null && fCharged;
+			this.szResolved = 0;
 		}
-		for (BlobFS blobFS : listBlobFSRepo) {
-			mapBlobFSRepo.put(blobFS.getId(), blobFS);
-			mapBlobFSRepo2.put(blobFS.getId(), blobFS);
-		}	
+
+		void setSolderEntry(SolderEntry se) {
+			this.se = se;
+			if (se != null && se.getSize() > 0) {
+				this.szResolved = se.getSize();
+			}
+
+		}
+
+	}
+
+	public static class SRepoUsage {
+		SRepo srepo;
+		List<SCommit> listCommit;
+		Map<Long, BlobFS> mapBlobFSRepo, mapBlobFSCommit;
+
+		List<BlobFS> listBlobFSRepo, listBlobFSCommit;
+
+		Set<Integer> setCommitIdError;
+
+		long szRepoCharged, szRepoOrphan;
+
+		List<UsageEntry> listUE;
 		
-		long szRepoCharged=0,szOrphan=0;
 		
-		List<SCommit> listBadCommit = new ArrayList<>();
-		int nCommitFileError=0;
-		Set<Integer> setCommitIdError = new HashSet<>();
-		Set<Long> setBlobFSidError = new HashSet<>();
+
+		public SRepoUsage(SRepo srepo) throws IOException {
+			this.srepo = Objects.requireNonNull(srepo);
+			listCommit = srepo.getAllCommit();
+
+			mapBlobFSRepo = new LinkedHashMap<>();
+			mapBlobFSCommit = new LinkedHashMap<>();
+
+			listBlobFSRepo = BlobFS.selectByOwner(SRepo.BLOB_TYPE_SOLDER_REPO, "" + srepo.getSeqId());
+			listBlobFSCommit = BlobFS.selectByOwner(SRepo.BLOB_TYPE_SOLDER_COMMIT, "" + srepo.getSeqId());
+
+			Map<Long, BlobFS> mapBlobFSRepo2 = new LinkedHashMap<>();
+			Map<Long, BlobFS> mapBlobFSCommit2 = new LinkedHashMap<>();
+
+			for (BlobFS blobFS : listBlobFSCommit) {
+				mapBlobFSCommit.put(blobFS.getId(), blobFS);
+				mapBlobFSCommit2.put(blobFS.getId(), blobFS);
+			}
+			for (BlobFS blobFS : listBlobFSRepo) {
+				mapBlobFSRepo.put(blobFS.getId(), blobFS);
+				mapBlobFSRepo2.put(blobFS.getId(), blobFS);
+			}
+
+			List<SCommit> listBadCommit = new ArrayList<>();
+			int nCommitFileError = 0;
+			setCommitIdError = new HashSet<>();
+			Set<Long> setBlobFSidError = new HashSet<>();
+
+			int sid = srepo.getSeqId();
+
+			listUE = new ArrayList<>();
+
+			for (int i = listCommit.size() - 1; i >= 0; i--) {
+				SCommit commit = listCommit.get(i);
+				int commitId = commit.getId();
+
+				long blobCommitFsId = commit.getBlobFsId();
+				BlobFS blobFS = mapBlobFSCommit2.remove(blobCommitFsId);
+				UsageEntry ue = new UsageEntry(sid, commitId, UEType.COMMIT, blobCommitFsId, blobFS, true);
+				listUE.add(ue);
+
+				LOG.info(String.format("#Commit %d blobFsId=%d fBlobFound=%s", commitId, blobCommitFsId,
+						Boolean.toString(blobFS != null)));
+				// csvPrinter.printComment(sb.toString());
+
+				if (blobFS == null) {
+					listBadCommit.add(commit);
+					setCommitIdError.add(commit.getId());
+					LOG.info(String.format("commit %d; cannot find blobFSId %d (nBadCommits=%d)", commit.getId(),
+							blobCommitFsId, listBadCommit.size()));
+					continue;
+				}
+
+				BeechFS fsCommit = null;
+				try {
+					File fileCommit = srepo.downloadFile("", blobCommitFsId, null);
+					ue.szResolved = fileCommit.length();
+
+					fsCommit = new BeechFS(fileCommit, Mode.READONLY);
+
+					InputStream is = fsCommit.read(CommitDetails.COMMIT_DETAIL);
+					LBytesRefBuilder brb = new LBytesRefBuilder();
+					try {
+						brb.append(is, -1, true);
+					} finally {
+						IOUtils.closeQuietly(is);
+					}
+					String stJson = brb.get().utf8ToString();
+					CommitDetails commitDetails = LogJsonDecoder.getTL().readObject(stJson, CommitDetails.class);
+
+					// Check commitInfo matches with scommit..
+					boolean fCommitFileError = !commitDetails.getCHash().equals(commit.getCHash())
+							|| commitDetails.getCommitId() != commit.getId();
+
+					if (fCommitFileError) {
+						setCommitIdError.add(commit.getId());
+						nCommitFileError++;
+						LOG.info(String.format(
+								"Commit %d (nCommitFileError=%d) CommitDetail Info mismatch with given SCommitInfo object. Req=(%d,%s) info=(%d,%s)",
+								commit.getId(), nCommitFileError, commitDetails.getCommitId(), commitDetails.getCHash(),
+								commit.getId(), commit.getCHash()));
+						continue;
+					}
+
+					for (SolderEntry se : commitDetails.getAllEntryMap().values()) {
+						if (se.getType() != EntryType.BLOB) {
+							// Non blobs(or commits) are dealt in the next loop.
+							continue;
+						}
+
+						long seBlobFsId = se.getBlobFsId();
+						BlobFS blobSe = mapBlobFSRepo.get(seBlobFsId);
+						boolean fCharged = false;
+						if (blobSe == null) {
+							setBlobFSidError.add(seBlobFsId);
+						} else {
+							fCharged = mapBlobFSRepo2.remove(seBlobFsId) != null;
+						}
+						ue = new UsageEntry(sid, commitId, UEType.DATA, seBlobFsId, blobSe, fCharged);
+						ue.setSolderEntry(se);
+						listUE.add(ue);
+					}
+
+				} catch (Exception e) {
+					setCommitIdError.add(commit.getId());
+					LOG.info(String.format("Error while analyzing Commit %d", commit.getId()), e);
+				} finally {
+					IOUtils.closeQuietly(fsCommit);
+				}
+
+			}
+
+			// File blobs not referenced by any commit package.
+			for (BlobFS blobFS : mapBlobFSRepo2.values()) {
+				UEType type = setCommitIdError.contains(blobFS.getExtId()) ? UEType.ORPHAN_CE : UEType.ORPHAN;
+				UsageEntry ue = new UsageEntry(sid, blobFS.getExtId(), type, blobFS.getId(), blobFS, true);
+				ue.szResolved = resolveBlobSize(blobFS);
+				listUE.add(ue);
+
+			}
+
+			// Commit-package blobs not referenced by any SCommit row.
+			// Cursor thinks this is need; We iterate through every commit, not sure how
+			// this can occur..
+			// AI verify this and make the comment meaningful.
+			for (BlobFS blobFS : mapBlobFSCommit2.values()) {
+				UsageEntry ue = new UsageEntry(sid, blobFS.getExtId(), UEType.ORPHAN_COMMIT, blobFS.getId(), blobFS,
+						true);
+				ue.szResolved = resolveBlobSize(blobFS);
+				listUE.add(ue);
+			}
+
+			szRepoCharged = 0L;
+			szRepoOrphan = 0L;
+			for (UsageEntry ue : listUE) {
+				long sz = Math.max(ue.szResolved, 0);
+				long szCharged = ue.fCharged ? sz : 0L;
+				szRepoCharged += szCharged;
+				if (ue.type == UEType.ORPHAN || ue.type == UEType.ORPHAN_CE || ue.type == UEType.ORPHAN_COMMIT) {
+					szRepoOrphan += szCharged;
+				}
+
+			}
+
+		}
 		
-		int sid = srepo.getSeqId();
-		for (int i=listCommit.size()-1;i>=0;i--) {
+		public SRepo getRepo() {
+			return srepo;
+		}
+		
+		public List<SCommit> getAllCommit() {
+			return listCommit;
+		}
+		
+		public Set<Integer> getCommitIdsWithError() {
+			return setCommitIdError;
+		}
+		
+		public List<UsageEntry> getAllEntry() {
+			return listUE;
+		}
+		
+		public long getChargedSize() {
+			return szRepoCharged;
+		}
+		
+		public long getOrphanSize() {
+			return szRepoOrphan;
+		}
+		
+		public void doRemoveOrphan(boolean fDryRun) throws IOException {
+			if (!fDryRun && setCommitIdError.size()>0) {
+				LOG.info(String.format("doRemoveOrphan Error; Repo has Commits that has errors commits=%s ", StringUtils.join(setCommitIdError,",")));
+				throw new SolderException(String.format("doRemoveOrphan Error; Repo has Commits that has errors commits=%s ", StringUtils.join(setCommitIdError,",")));
+			}
+			int nConsecError=0;
+			for (UsageEntry ue : listUE) {
+				long sz = Math.max(ue.szResolved, 0);
+				long szCharged = ue.fCharged ? sz : 0L;
+				szRepoCharged += szCharged;
+				if (ue.type == UEType.ORPHAN || ue.type == UEType.ORPHAN_CE || ue.type == UEType.ORPHAN_COMMIT) {
+					String relPath = ue.se != null ? ue.se.getRelPath() : null;
+					if (StringUtils.isEmpty(relPath)) {
+						relPath = ue.type.name();
+					}
+					LOG.info(String.format("Found Orphan to Delete %s(%d) blob=%d sz=%d fDryRun=%s", relPath,ue.blobFSId,Boolean.toString(fDryRun)));
+					
+					if (!fDryRun) {
+						if (ue.fCharged&&ue.blobFS!=null) {
+							try {
+								Container.delete(ue.blobFS,true);
+								nConsecError=0;
+							}catch(Exception e) {
+								nConsecError++;
+								if (nConsecError>3) {
+									throw NimboException.rethrow(e);
+								} else {
+									LOG.info(String.format("Ignore Error deleting nConsec=%d blobFSID=%d type=%s",nConsecError,ue.blobFSId,ue.type.name()),e);
+								}
+							}
+						}
+						
+					}
+				}
+			}
+		}
+		
+		public void purgeRepo(boolean fDryRun) throws IOException {
+			if (!srepo.fDeleted ) {
+				throw new SolderException(String.format("Purge can be called on Repo already marked for deletion! repo %s(%d)",srepo.getSeqId(),srepo.getId()));
+			}
 			
-			long szCommitCharged=0;
-			//Latest comes first..
-			SCommit commit = listCommit.get(i);
-			int commitId = commit.getId();
-		
-			listVal.clear();
+			for (SCommit commit : listCommit) {
+				//Delete..
+				if (!fDryRun) {
+					commit.delete();
+				}
+			}
 			
-			//Get the commit...
-			long blobCommitFsId = commit.getBlobFsId();
-			BlobFS blobFS =mapBlobFSCommit2.remove(blobCommitFsId);
-			
-			sb.setLength(0);
-			sb.append(String.format("#Commit %d blobFsId=%d fBlobFound=%s", commitId,blobCommitFsId,Boolean.toString(blobFS!=null)));
-			csvPrinter.printComment(sb.toString());
-			
-		
-			if (blobFS == null) {
-				listBadCommit.add(commit);
-				setCommitIdError.add(commit.getId());
-				LOG.info(String.format("commit %d; cannot find blobFSId %d (nBadCommits=%d)", commit.getId(),blobCommitFsId,listBadCommit.size()));
-				continue;
+			int nConsecError = 0;
+			for (UsageEntry ue : listUE) {
+				long sz = Math.max(ue.szResolved, 0);
+				long szCharged = ue.fCharged ? sz : 0L;
+				szRepoCharged += szCharged;
+				if (ue.type == UEType.ORPHAN || ue.type == UEType.ORPHAN_CE || ue.type == UEType.ORPHAN_COMMIT) {
+					String relPath = ue.se != null ? ue.se.getRelPath() : null;
+					if (StringUtils.isEmpty(relPath)) {
+						relPath = ue.type.name();
+					}
+					LOG.info(String.format("Found Orphan to Delete %s(%d) blob=%d sz=%d fDryRun=%s", relPath,ue.blobFSId,Boolean.toString(fDryRun)));
+					
+					if (!fDryRun) {
+						if (ue.fCharged&&ue.blobFS!=null) {
+							try {
+								Container.delete(ue.blobFS,true);
+								nConsecError=0;
+							}catch(Exception e) {
+								nConsecError++;
+								if (nConsecError>3) {
+									throw NimboException.rethrow(e);
+								} else {
+									LOG.info(String.format("Ignore Error deleting nConsec=%d blobFSID=%d type=%s",nConsecError,ue.blobFSId,ue.type.name()),e);
+								}
+							}
+						}
+						
+					}
+				}
 			}
 			
 			
-			
-			BeechFS fsCommit=null;
-			try {
-				File fileCommit = srepo.downloadFile("",blobCommitFsId,null);
-				long szCommitFile  = fileCommit.length();
-				szCommitCharged += szCommitFile;
-				szRepoCharged += szCommitFile;
+		}
+		
+
+		public void getUsageCsv(File fileRepoReportRoot) throws IOException {
+
+			LOG.info(String.format("Usage report for repo %s(%d) isDeleted=%s", srepo.getId(), srepo.getSeqId(),
+					Boolean.toString(srepo.fDeleted)));
+
+			StringBuilder sb = new StringBuilder();
+			sb.append(String.format("#Repo sid=%d id=%s nCommits=%d tCreate=%s tLastCommit=%s\r\n", srepo.getSeqId(),
+					srepo.getId(), listCommit.size(), PrintUtils.print(srepo.getCreateDate()),
+					PrintUtils.print(srepo.getCommitDate())));
+
+			File fileRepoUsage = new File(fileRepoReportRoot, srepo.getSeqId() + "_usage.csv");
+			Validator.checkNewFile(fileRepoUsage, true, "Repo usage file");
+
+			StringBuilder sbCsv = new StringBuilder();
+			CSVPrinter csvPrinter = new CSVPrinter(sbCsv, CSVFormat.DEFAULT);
+
+			csvPrinter.printRecord((Object[]) USAGE_HEADER);
+
+			csvPrinter.printComment(sb.toString());
+
+			List<Object> listVal = new ArrayList<>();
+
+			long szRepoCharged = 0, szOrphan = 0, szCommitCharged = 0;
+			;
+			int commitId = -1;
+			for (UsageEntry ue : listUE) {
+
+				if (commitId != ue.commitId) {
+					szCommitCharged = 0L;
+				}
+
+				if (ue.type == UEType.COMMIT) {
+					sb.setLength(0);
+					sb.append(String.format("#Commit %d blobFsId=%d fBlobFound=%s", commitId, ue.blobFSId,
+							Boolean.toString(ue.blobFS != null)));
+					csvPrinter.printComment(sb.toString());
+				}
+
+				String relPath = ue.se != null ? ue.se.getRelPath() : null;
+				if (StringUtils.isEmpty(relPath)) {
+					relPath = ue.type.name();
+				}
+				long sz = Math.max(ue.szResolved, 0);
+				long szCharged = ue.fCharged ? sz : 0L;
+				if (ue.type == UEType.COMMIT || ue.type == UEType.DATA) {
+					szCommitCharged += szCharged;
+				} else {
+					szOrphan += szCharged;
+				}
+				szRepoCharged += szOrphan;
+
 				listVal.clear();
-				listVal.add(sid);
-				listVal.add(commitId);
-				listVal.add("CommitFile");
-				listVal.add(blobCommitFsId);
-				listVal.add(szCommitFile);
-				listVal.add(szCommitFile);
+				listVal.add(ue.sid);
+				listVal.add(ue.commitId);
+				listVal.add(relPath);
+				listVal.add(ue.blobFSId);
+				listVal.add(sz);
+				listVal.add(szCharged);
 				listVal.add(szCommitCharged);
 				listVal.add(szRepoCharged);
 				listVal.add(szOrphan);
 				csvPrinter.printRecord(listVal);
-				
-				
-				fsCommit = new BeechFS(fileCommit, Mode.READONLY);
-				
-				InputStream is = fsCommit.read(CommitDetails.COMMIT_DETAIL);
-				LBytesRefBuilder brb = new LBytesRefBuilder();
-				try {
-					brb.append(is, -1, true);
-				} finally {
-					IOUtils.closeQuietly(is);
-				}
-				String stJson = brb.get().utf8ToString();
-				CommitDetails commitDetails = LogJsonDecoder.getTL().readObject(stJson, CommitDetails.class);
-				
-				//Check commitInfo matches with scommit..
-				boolean fCommitFileError = !commitDetails.getCHash().equals(commit.getCHash()) || commitDetails.getCommitId() != commit.getId();
-				
-				if (fCommitFileError) {
-					setCommitIdError.add(commit.getId());
-					nCommitFileError++;
-					LOG.info(String.format("Commit %d (nCommitFileError=%d) CommitDetail Info mismatch with given SCommitInfo object. Req=(%d,%s) info=(%d,%s)",
-									commit.getId(),nCommitFileError,commitDetails.getCommitId(), commitDetails.getCHash(), commit.getId(), commit.getCHash()));
-					continue;
-				}		
-				
-				
-				
-				for (SolderEntry se : commitDetails.getAllEntryMap().values()) {
-					if (se.getType()!=EntryType.BLOB) {
-						//Non blobs(or commits) are dealt in the next loop.
-						continue;
-					}
-					
-					long seBlobFsId = se.getBlobFsId();
-					BlobFS blobSe = mapBlobFSRepo.get(seBlobFsId);
-					if (blobSe==null) {
-						setBlobFSidError.add(seBlobFsId);
-						
-					}
-					
-					long sz = Math.max(0, se.getSize());
-					long szCharged = 0;
-					if (blobSe!=null) {
-						if (mapBlobFSRepo2.remove(seBlobFsId)!=null) {
-							szCharged=sz;
-						}
-					}
-					
-					szCommitCharged += szCharged;
-					szRepoCharged += szCharged;
-					listVal.clear();
-					listVal.add(sid);
-					listVal.add(commitId);
-					listVal.add(se.getRelPath());
-					listVal.add(seBlobFsId);
-					listVal.add(sz);
-					listVal.add(szCharged);
-					listVal.add(szCommitCharged);
-					listVal.add(szRepoCharged);
-					listVal.add(szOrphan);
-					csvPrinter.printRecord(listVal);
-				}
-				
-				
-			}catch(Exception e) {
-				setCommitIdError.add(commit.getId());
-				LOG.info(String.format("Error while analyzing Commit %d",commit.getId()),e);
-			}finally {
-				IOUtils.closeQuietly(fsCommit);
+
 			}
-			
-			
-			//Print Orphans.
-			
+
+			csvPrinter.close();
+
+			String stCsv = sbCsv.toString();
+			LOG.info(String.format("\r\n****** CSV Table of SRepo ***\r\n%s\r\n*********\r\n", stCsv));
+
+			try (FileWriter w = new FileWriter(fileRepoUsage, StandardCharsets.UTF_8)) {
+				w.write(stCsv);
+				w.write("\r\n");
+			}
 		}
 
-		// File blobs not referenced by any commit package.
-		for (BlobFS blobFS : mapBlobFSRepo2.values()) {
-			long szCharged = printOrphanRow(csvPrinter, listVal, sid, "OrphanFile", blobFS.getInfo().get("path"),
-					blobFS, szRepoCharged, szOrphan);
-			szOrphan += szCharged;
-			szRepoCharged += szCharged;
+		private static long resolveBlobSize(BlobFS blobFS) {
+			long sz = blobFS.getSize();
+			if (sz > 0) {
+				return sz;
+			}
+			try {
+				BlobFile blobFile = Container.read(blobFS);
+				return blobFile.getFile().length();
+			} catch (Exception e) {
+				LOG.info(String.format("Error getting blob %d", blobFS.getId()), e);
+				return -1;
+			}
 		}
 
-		// Commit-package blobs not referenced by any SCommit row.
-		for (BlobFS blobFS : mapBlobFSCommit2.values()) {
-			long szCharged = printOrphanRow(csvPrinter, listVal, sid, "OrphanCommit", "CommitFile", blobFS,
-					szRepoCharged, szOrphan);
-			szOrphan += szCharged;
-			szRepoCharged += szCharged;
-		}
-		
-		csvPrinter.close();
-		
-		String stCsv = sbCsv.toString();
-		LOG.info(String.format("\r\n****** CSV Table of SRepo ***\r\n%s\r\n*********\r\n",stCsv));
-		
-		try (FileWriter w = new FileWriter(fileRepoUsage,StandardCharsets.UTF_8)) {
-			w.write(stCsv);
-			w.write("\r\n");
-		}
-		
-		return szRepoCharged;
-		
+	}
+	
+	public static long[] getDeletedRepoUsage(File fileRepoReportRoot) throws IOException {
+		return getAllRepoUsage(SRepo.getDeletedRepo(), fileRepoReportRoot);
 	}
 
-	private static long resolveBlobSize(BlobFS blobFS) {
-		long sz = blobFS.getSize();
-		if (sz > 0) {
-			return sz;
-		}
-		try {
-			BlobFile blobFile = Container.read(blobFS);
-			return blobFile.getFile().length();
-		} catch (Exception e) {
-			LOG.info(String.format("Error getting blob %d", blobFS.getId()), e);
-			return -1;
-		}
+	public static long[] getAllRepoUsage(File fileRepoReportRoot) throws IOException {
+		return getAllRepoUsage(SRepo.getAll(), fileRepoReportRoot);
 	}
 
-	private static long printOrphanRow(CSVPrinter csvPrinter, List<Object> listVal, int sid, String kind,
-			String relPath, BlobFS blobFS, long szRepoChargedBefore, long szOrphanBefore) throws IOException {
-		if (relPath == null) {
-			relPath = "Unknown";
-		}
-		long sz = resolveBlobSize(blobFS);
-		long szCharged = sz > 0 ? sz : 0;
-		listVal.clear();
-		listVal.add(sid);
-		listVal.add(blobFS.getExtId());
-		listVal.add(kind + ":" + relPath);
-		listVal.add(blobFS.getId());
-		listVal.add(sz);
-		listVal.add(szCharged);
-		listVal.add(0);
-		listVal.add(szRepoChargedBefore + szCharged);
-		listVal.add(szOrphanBefore + szCharged);
-		csvPrinter.printRecord(listVal);
-		return szCharged;
-	}
-	
-	
-	public static long getDeletedRepoUsage(File fileRepoReportRoot) throws IOException {
-		return getAllRepoUsage( SRepo.getDeletedRepo(),fileRepoReportRoot);		
-	}
-	
-	public static long getAllRepoUsage(File fileRepoReportRoot) throws IOException {
-		return getAllRepoUsage( SRepo.getAll(),fileRepoReportRoot);		
-	}
-	
-	
-	public static long getAllRepoUsage(List<SRepo> listRepo,File fileRepoReportRoot) throws IOException {
+	public static long[] getAllRepoUsage(List<SRepo> listRepo, File fileRepoReportRoot) throws IOException {
 		Objects.requireNonNull(listRepo);
-		long szTotal =0;
+		long szTotal = 0, szOrphan = 0L;
 		for (SRepo repo : listRepo) {
-			szTotal += getUsage(repo,fileRepoReportRoot);
+			SRepoUsage repoUsage = new SRepoUsage(repo);
+			szTotal += repoUsage.szRepoCharged;
+			szOrphan += repoUsage.szRepoOrphan;
+			repoUsage.getUsageCsv(fileRepoReportRoot);
 		}
-		return szTotal;
+
+		LOG.info(String.format("Final RepoUsage nRepos=%d szCharged=%,d bytes, szOrphan=%,d", listRepo.size(),
+				szTotal, szOrphan));
+
+		return new long[] { szTotal, szOrphan };
 	}
 
 }

@@ -799,7 +799,7 @@ public class SRepo implements ISerializable {
 				}
 				if (fBlobCommitted) {
 					try {
-						blobCommit.delete();
+						Container.delete(blobCommit,true);
 					} catch (Exception e) {
 						LOG.warn(String.format("Failed to rollback commit blob id=%d after commitUpload failure: %s",
 								blobCommit.getId(), e.toString()));
