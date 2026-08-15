@@ -92,6 +92,9 @@ public class SolderRestCLI  extends AbstractCLI {
 	public void printHelp() throws IOException{
 		super.printHelp();
 		System.out.println("**********Op Details************\r\n");
+		System.out.println("Note: repo lookup accepts string id and/or numeric sid. If sid is omitted/<=0 and");
+		System.out.println("      repoId is all digits, it is also tried as sid first, then as string id.");
+		System.out.println("      Prefer non-numeric repo ids so they cannot collide with a seq id (sid).");
 		System.out.println("**********Git Ops************\r\n");
 		for (var entry : mapGitOpsHelp.entrySet()) {
 			System.out.println(String.format("%s ->%s", entry.getKey(),entry.getValue()));
@@ -117,10 +120,10 @@ public class SolderRestCLI  extends AbstractCLI {
 		mapGitOpsHelp.put("search", 
 				"Search Repo. Params: [repoIdPattern schemaNamePattern, tagFilter]");
 		mapGitOpsHelp.put("delete", 
-				"Delete Repo (Marks for deletion). Params: repoId");
+				"Delete Repo (Marks for deletion). Params: repoId (string id; numeric also tried as sid — prefer non-numeric ids)");
 		
 		mapGitOpsHelp.put("init",
-				"Git init. Params:repoId [commitId]");
+				"Git init. Params:repoId [commitId] (repoId: numeric also tried as sid — prefer non-numeric ids)");
 		
 		mapGitOpsHelp.put("checkout",
 				"Git Checkout(same as clone,rebase). Params: [commitId]");
@@ -129,13 +132,13 @@ public class SolderRestCLI  extends AbstractCLI {
 		mapGitOpsHelp.put("status",
 				"Git Status. Params:");
 		mapGitOpsHelp.put("prune",
-				"Prune commits (throw away older storage snaps). Params: repoId commitCsvToKeep [fDryRun]. Latest tip is always kept. After prune, run orphan to reclaim blob space.");
+				"Prune commits (throw away older storage snaps). Params: repoId commitCsvToKeep [fDryRun]. Latest tip is always kept. After prune, run orphan to reclaim blob space. repoId: numeric also tried as sid.");
 		mapGitOpsHelp.put("orphan",
-				"Remove orphan files from repo. Params:repoId [fDryRun]. Blocked if tip or tip's prev commit failed to scan.");
+				"Remove orphan files from repo. Params:repoId [fDryRun]. Blocked if tip or tip's prev commit failed to scan. repoId: numeric also tried as sid.");
 		mapGitOpsHelp.put("usagereport",
-				"Generates usage report for the repo (via REST). Params:repoId outDir");
+				"Generates usage report for the repo (via REST). Params:repoId outDir. repoId: numeric also tried as sid.");
 		mapGitOpsHelp.put("purge",
-				"Purges an already deleted repo. Params:repoId [fDryRun]");
+				"Purges an already deleted repo. Params:repoId [fDryRun]. repoId: numeric also tried as sid.");
 	}
 	
 	private static RestClient client =null;

@@ -58,6 +58,7 @@ import com.ee.session.db.SentryProvider;
 import com.ee.session.db.User;
 import com.jnk.util.CompareUtils;
 import com.jnk.util.PrintUtils;
+import com.jnk.util.TParseUtil;
 import com.jnk.util.TReference;
 import com.jnk.util.Validator;
 import com.jnk.util.Validator.Rules;
@@ -173,22 +174,32 @@ public enum SolderRestSkeleton {
 	}
 	
 	// Skeletons
-	
+	//Now we also try id as sid (as it is convenient.
 	static SRepo getRepo(int sid,String id,boolean fThrow) throws IOException {
 		SRepo repo =null;
-		if (sid>=0) {
+		if (sid <=0) {
+			//string id has an alphabet..
+			//if not we suffer a futile exercise..
+			//There is a risk of repo id looking like a sid..
+			//we will encourage apps and users to have non numerical value
+			sid = (int)TParseUtil.parseLongOrMinusOne(id);
+		}
+		
+		if (sid>0) {
 			 repo = SRepo.getRepoBySeqId(sid);
-			 if (fThrow) {
-				 Objects.requireNonNull(repo,()->"repo "+sid);
-			 }
-		} else if (id != null && !id.isBlank()) {
+		} 
+		
+		if (repo==null && id != null && !id.isBlank()) {
 			repo = SRepo.getRepoById(id);
 			if (fThrow) {
 				Objects.requireNonNull(repo,()->"repo "+id);
 			}
-		} else {
-			throw new SolderException("No repo id or sid given!");
-		}
+		} 
+		
+		if (fThrow) {
+			int sidFinal =sid;
+			 Objects.requireNonNull(repo,()->"repo sid="+sidFinal+"; id="+id);
+		 }
 		
 		return repo;
 	}
