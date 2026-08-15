@@ -42,7 +42,7 @@ public class SRepoUtil {
 			"sizeCharged", "commitCharged", "RepoCharged", "orphanCharged" };
 
 	static enum UEType {
-		COMMIT, DATA, ORPHAN, ORPHAN_CE, ORPHAN_COMMIT;
+		COMMIT, DATA, ORPHAN;
 	}
 
 	static class UsageEntry {
@@ -203,21 +203,18 @@ public class SRepoUtil {
 
 			}
 
-			// File blobs not referenced by any commit package.
+			// File blobs not referenced by any successfully scanned commit package.
 			for (BlobFS blobFS : mapBlobFSRepo2.values()) {
-				UEType type = setCommitIdError.contains(blobFS.getExtId()) ? UEType.ORPHAN_CE : UEType.ORPHAN;
-				UsageEntry ue = new UsageEntry(sid, blobFS.getExtId(), type, blobFS.getId(), blobFS, true);
+				UsageEntry ue = new UsageEntry(sid, blobFS.getExtId(), UEType.ORPHAN, blobFS.getId(), blobFS, true);
 				ue.szResolved = resolveBlobSize(blobFS);
 				listUE.add(ue);
 
 			}
 
-			// Commit-package blobs not referenced by any SCommit row.
-			// Cursor thinks this is need; We iterate through every commit, not sure how
-			// this can occur..
-			// AI verify this and make the comment meaningful.
+			// Commit-package blobs with no matching SCommit row (e.g. tip CAS lost after
+			// blob commit, or abandoned upload session).
 			for (BlobFS blobFS : mapBlobFSCommit2.values()) {
-				UsageEntry ue = new UsageEntry(sid, blobFS.getExtId(), UEType.ORPHAN_COMMIT, blobFS.getId(), blobFS,
+				UsageEntry ue = new UsageEntry(sid, blobFS.getExtId(), UEType.ORPHAN, blobFS.getId(), blobFS,
 						true);
 				ue.szResolved = resolveBlobSize(blobFS);
 				listUE.add(ue);
@@ -229,7 +226,7 @@ public class SRepoUtil {
 				long sz = Math.max(ue.szResolved, 0);
 				long szCharged = ue.fCharged ? sz : 0L;
 				szRepoCharged += szCharged;
-				if (ue.type == UEType.ORPHAN || ue.type == UEType.ORPHAN_CE || ue.type == UEType.ORPHAN_COMMIT) {
+				if (ue.type == UEType.ORPHAN) {
 					szRepoOrphan += szCharged;
 				}
 
@@ -262,41 +259,40 @@ public class SRepoUtil {
 		}
 		
 		public void doRemoveOrphan(boolean fDryRun) throws IOException {
-			if (!fDryRun && setCommitIdError.size()>0) {
-				LOG.info(String.format("doRemoveOrphan Error; Repo has Commits that has errors commits=%s ", StringUtils.join(setCommitIdError,",")));
-				throw new SolderException(String.format("doRemoveOrphan Error; Repo has Commits that has errors commits=%s ", StringUtils.join(setCommitIdError,",")));
+			// Live content is defined by tip (and typically tip's prev snap). If either failed to
+			// scan, orphan classification is untrustworthy — block reclaim. Otherwise reclaim
+			// all orphans (otherwise they stay orphan forever).
+			if (isTipOrTipPrevScanError()) {
+				String msg = String.format(
+						"doRemoveOrphan blocked; tip and/or tip prev had commit scan errors. tip=%d tipPrev=%d errorCommits=%s fDryRun=%s",
+						srepo.getCommitId(), tipPrevCommitId(), StringUtils.join(setCommitIdError, ","),
+						Boolean.toString(fDryRun));
+				LOG.info(msg);
+				throw new SolderException(msg);
 			}
-			int nConsecError=0;
-			for (UsageEntry ue : listUE) {
-				long sz = Math.max(ue.szResolved, 0);
-				long szCharged = ue.fCharged ? sz : 0L;
-				szRepoCharged += szCharged;
-				if (ue.type == UEType.ORPHAN || ue.type == UEType.ORPHAN_CE || ue.type == UEType.ORPHAN_COMMIT) {
-					String relPath = ue.se != null ? ue.se.getRelPath() : null;
-					if (StringUtils.isEmpty(relPath)) {
-						relPath = ue.type.name();
-					}
-					
-					
-					if (!fDryRun) {
-						if (ue.fCharged&&ue.blobFS!=null) {
-							LOG.info(String.format("Found Orphan to Delete %s blob=%d sz=%d fDryRun=%s", relPath,ue.blobFSId,sz,Boolean.toString(fDryRun)));
-							try {
-								Container.delete(ue.blobFS,true);
-								nConsecError=0;
-							}catch(Exception e) {
-								nConsecError++;
-								if (nConsecError>3) {
-									throw NimboException.rethrow(e);
-								} else {
-									LOG.info(String.format("Ignore Error deleting nConsec=%d blobFSID=%d type=%s",nConsecError,ue.blobFSId,ue.type.name()),e);
-								}
-							}
-						}
-						
-					}
+			deleteChargedBlobs(fDryRun, true);
+		}
+
+		private int tipPrevCommitId() {
+			int tip = srepo.getCommitId();
+			if (tip <= 0) {
+				return 0;
+			}
+			for (SCommit c : listCommit) {
+				if (c.getId() == tip) {
+					return c.getPrevId();
 				}
 			}
+			return 0;
+		}
+
+		private boolean isTipOrTipPrevScanError() {
+			int tip = srepo.getCommitId();
+			if (tip > 0 && setCommitIdError.contains(tip)) {
+				return true;
+			}
+			int tipPrev = tipPrevCommitId();
+			return tipPrev > 0 && setCommitIdError.contains(tipPrev);
 		}
 		
 		public void purgeRepo(boolean fDryRun) throws IOException {
@@ -310,39 +306,42 @@ public class SRepoUtil {
 					commit.delete();
 				}
 			}
-			
+
+			// Delete all charged blobs (commit packages, file data, and orphans).
+			deleteChargedBlobs(fDryRun, false);
+		}
+
+		/**
+		 * @param fOrphansOnly if true, only ORPHAN* entries; if false, all charged blobs (purge).
+		 */
+		private void deleteChargedBlobs(boolean fDryRun, boolean fOrphansOnly) throws IOException {
 			int nConsecError = 0;
 			for (UsageEntry ue : listUE) {
+				if (fOrphansOnly && ue.type != UEType.ORPHAN) {
+					continue;
+				}
+				if (!ue.fCharged || ue.blobFS == null) {
+					continue;
+				}
+				String relPath = relPathForCsv(ue);
 				long sz = Math.max(ue.szResolved, 0);
-				long szCharged = ue.fCharged ? sz : 0L;
-				szRepoCharged += szCharged;
-				if (ue.type == UEType.ORPHAN || ue.type == UEType.ORPHAN_CE || ue.type == UEType.ORPHAN_COMMIT) {
-					String relPath = ue.se != null ? ue.se.getRelPath() : null;
-					if (StringUtils.isEmpty(relPath)) {
-						relPath = ue.type.name();
+				LOG.info(String.format("Found blob to delete type=%s path=%s blob=%d sz=%d fDryRun=%s",
+						ue.type.name(), relPath, ue.blobFSId, sz, Boolean.toString(fDryRun)));
+				if (fDryRun) {
+					continue;
+				}
+				try {
+					Container.delete(ue.blobFS, true);
+					nConsecError = 0;
+				} catch (Exception e) {
+					nConsecError++;
+					if (nConsecError > 3) {
+						throw NimboException.rethrow(e);
 					}
-					LOG.info(String.format("Found Orphan to Delete %s(%d) blob=%d sz=%d fDryRun=%s", relPath,ue.blobFSId,Boolean.toString(fDryRun)));
-					
-					if (!fDryRun) {
-						if (ue.fCharged&&ue.blobFS!=null) {
-							try {
-								Container.delete(ue.blobFS,true);
-								nConsecError=0;
-							}catch(Exception e) {
-								nConsecError++;
-								if (nConsecError>3) {
-									throw NimboException.rethrow(e);
-								} else {
-									LOG.info(String.format("Ignore Error deleting nConsec=%d blobFSID=%d type=%s",nConsecError,ue.blobFSId,ue.type.name()),e);
-								}
-							}
-						}
-						
-					}
+					LOG.info(String.format("Ignore Error deleting nConsec=%d blobFSID=%d type=%s", nConsecError,
+							ue.blobFSId, ue.type.name()), e);
 				}
 			}
-			
-			
 		}
 		
 
@@ -426,10 +425,10 @@ public class SRepoUtil {
 			if (ue.type == UEType.DATA) {
 				return ue.se != null ? ue.se.getRelPath() : "Unknown";
 			}
-			if (ue.type == UEType.ORPHAN_COMMIT) {
+			// ORPHAN — label by blob owner for readability only.
+			if (ue.blobFS != null && SRepo.BLOB_TYPE_SOLDER_COMMIT.equals(ue.blobFS.getOwnerApp())) {
 				return "OrphanCommit:CommitFile";
 			}
-			// ORPHAN / ORPHAN_CE — preserve prior OrphanFile:<path> labeling.
 			String path = null;
 			if (ue.blobFS != null && ue.blobFS.getInfo() != null) {
 				path = ue.blobFS.getInfo().get("path");
@@ -437,8 +436,7 @@ public class SRepoUtil {
 			if (StringUtils.isEmpty(path)) {
 				path = "Unknown";
 			}
-			String prefix = ue.type == UEType.ORPHAN_CE ? "OrphanCE" : "OrphanFile";
-			return prefix + ":" + path;
+			return "OrphanFile:" + path;
 		}
 
 		private static long resolveBlobSize(BlobFS blobFS) {

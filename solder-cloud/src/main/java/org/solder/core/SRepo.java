@@ -341,7 +341,7 @@ public class SRepo implements ISerializable {
 		//We always keep the tip.
 		refresh(null);
 		int tip = this.commitId;
-		Set<Integer> setWanted = null;
+		Set<Integer> setWanted;
 		
 		if (aCommitIdsToKeep!=null &&aCommitIdsToKeep.length>0) {
 			setWanted = Arrays.stream(aCommitIdsToKeep).boxed()
@@ -355,13 +355,12 @@ public class SRepo implements ISerializable {
 			if (!setWanted.contains(scommit.getId())) {
 				LOG.info(String.format("pruneCommits to remove commit %d createDate=%s fDryRun=%s", scommit.getId(),PrintUtils.print(scommit.getCreateDate()),Boolean.toString(fDryRun)));
 				if (!fDryRun) {
-					//SRepoUtil orphan remover will remove all files not referred by other commits. 
+					// prev_id/prev_chash on kept commits may still reference pruned ids (informational).
+					// SRepoUtil orphan remover will remove blobs not referred by remaining commits.
 					scommit.delete();
 				}
 			}
 		}
-		
-		
 	}
 
 	public String toString() {

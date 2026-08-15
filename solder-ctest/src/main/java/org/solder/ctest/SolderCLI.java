@@ -114,16 +114,16 @@ public class SolderCLI  extends AbstractCLI {
 				"Git Status. Params:");
 		
 		mapGitOpsHelp.put("prune",
-				"Prune commits (You can/should throw away older Commits. Think each as storage snap). Params: repoId commitCsvToKeep. By default the latest commit will not be thrown away!" );
+				"Prune commits (throw away older storage snaps). Params: repoId commitCsvToKeep [fDryRun]. Latest tip is always kept. After prune, run orphan to reclaim blob space.");
 		
 		
 		
 		mapGitOpsHelp.put("orphan",
-				"Remove orphan files from repo. Params:repoId [fDryRun]");
+				"Remove orphan files from repo. Params:repoId [fDryRun]. Blocked if tip or tip's prev commit failed to scan.");
 		mapGitOpsHelp.put("usagereport",
 				"Generates usage report for the  repo. Params:repoId outDir");
 		mapGitOpsHelp.put("purge",
-				"Purges an alredy deleted repo. Params:repoId [fDryRun]");
+				"Purges an already deleted repo. Params:repoId [fDryRun]");
 	}
 	
 	private static SolderGitClient gitClient = null;
