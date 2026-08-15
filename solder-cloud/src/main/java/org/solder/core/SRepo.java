@@ -337,7 +337,7 @@ public class SRepo implements ISerializable {
 		return dateUpdate;
 	}
 	
-	public synchronized void pruneCommits(int[] aCommitIdsToKeep,boolean fDryRun)throws IOException {
+	public synchronized int[] pruneCommits(int[] aCommitIdsToKeep,boolean fDryRun)throws IOException {
 		//We always keep the tip.
 		refresh(null);
 		int tip = this.commitId;
@@ -351,9 +351,11 @@ public class SRepo implements ISerializable {
 		}
 		setWanted.add(tip);
 		List<SCommit> list = getAllCommit();
+		List<Integer> listRemoved = new ArrayList<>();
 		for (SCommit scommit : list) {
 			if (!setWanted.contains(scommit.getId())) {
 				LOG.info(String.format("pruneCommits to remove commit %d createDate=%s fDryRun=%s", scommit.getId(),PrintUtils.print(scommit.getCreateDate()),Boolean.toString(fDryRun)));
+				listRemoved.add(scommit.getId());
 				if (!fDryRun) {
 					// prev_id/prev_chash on kept commits may still reference pruned ids (informational).
 					// SRepoUtil orphan remover will remove blobs not referred by remaining commits.
@@ -361,6 +363,7 @@ public class SRepo implements ISerializable {
 				}
 			}
 		}
+		return listRemoved.stream().mapToInt(Integer::intValue).toArray();
 	}
 
 	public String toString() {

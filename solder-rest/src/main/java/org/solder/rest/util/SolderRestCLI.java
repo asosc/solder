@@ -2,7 +2,9 @@ package org.solder.rest.util;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
@@ -13,6 +15,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.rest.solder.RestRepoFileService;
 import org.solder.rest.solder.SRepoInfo;
+import org.solder.rest.solder.SUsageEntry;
 import org.solder.rest.solder.SolderGitClient;
 import org.solder.rest.solder.SolderRestClient;
 
@@ -21,6 +24,7 @@ import com.ee.rest.RestException;
 import com.ee.rest.RestOp.RestClient;
 import com.ee.rest.client.ECred;
 import com.jnk.junit.AbstractCLI;
+import com.jnk.util.TParseUtil;
 import com.jnk.util.TypeConversion;
 import com.jnk.util.Validator;
 import com.jnk.util.random.IRandom;
@@ -103,7 +107,7 @@ public class SolderRestCLI  extends AbstractCLI {
 	// ALL Handlers are here..
 
 	
-	static final String[] git_Ops = { "create","checkout","push","init","status","search","delete"};
+	static final String[] git_Ops = { "create","checkout","push","init","status","search","delete","prune","orphan","usagereport","purge"};
 	
 	static final TreeMap<String,String> mapGitOpsHelp = new TreeMap<>();
 	static {
@@ -124,10 +128,14 @@ public class SolderRestCLI  extends AbstractCLI {
 				"Git Push(same as commit and push). Params:");
 		mapGitOpsHelp.put("status",
 				"Git Status. Params:");
-		
-		
-		
-	
+		mapGitOpsHelp.put("prune",
+				"Prune commits (throw away older storage snaps). Params: repoId commitCsvToKeep [fDryRun]. Latest tip is always kept. After prune, run orphan to reclaim blob space.");
+		mapGitOpsHelp.put("orphan",
+				"Remove orphan files from repo. Params:repoId [fDryRun]. Blocked if tip or tip's prev commit failed to scan.");
+		mapGitOpsHelp.put("usagereport",
+				"Generates usage report for the repo (via REST). Params:repoId outDir");
+		mapGitOpsHelp.put("purge",
+				"Purges an already deleted repo. Params:repoId [fDryRun]");
 	}
 	
 	private static RestClient client =null;
@@ -287,6 +295,79 @@ public class SolderRestCLI  extends AbstractCLI {
 				initSolder("SolderCLIGitStatus",fileCache,repoId);
 				
 				gitClient.gitStatus();
+				break;
+			}
+
+			case "prune": {
+				initSolder("SolderRestCLIPrune", null, null);
+				String repoId = args[nParam++];
+				int[] aCommitIdsToKeep = TParseUtil.parseIntCsv(args[nParam++]);
+				boolean fDryRun = nParam < args.length ? TypeConversion.asBoolean(args[nParam++]) : true;
+				logConsole(String.format("Prune repo %s toKeep=%s fDryRun=%s", repoId,
+						Arrays.toString(aCommitIdsToKeep), Boolean.toString(fDryRun)));
+				int[] aRemoved = SolderRestClient.pruneCommits(repoId, aCommitIdsToKeep, fDryRun, client);
+				logConsole(String.format("Prune %s removed %d commits: %s",
+						fDryRun ? "dry-run would remove" : "removed", aRemoved.length, Arrays.toString(aRemoved)));
+				break;
+			}
+
+			case "orphan": {
+				initSolder("SolderRestCLIOrphan", null, null);
+				String repoId = args[nParam++];
+				boolean fDryRun = nParam < args.length ? TypeConversion.asBoolean(args[nParam++]) : true;
+				logConsole(String.format("Remove Orphan from repo %s [fDryRun=%s]", repoId, Boolean.toString(fDryRun)));
+				SUsageEntry[] a = SolderRestClient.removeOrphans(repoId, fDryRun, client);
+				logConsole(String.format("Orphan %s %d blobs:", fDryRun ? "would delete" : "deleted", a.length));
+				for (SUsageEntry ue : a) {
+					logConsole(String.format("\t%s sid=%d commitId=%d blobFsId=%d sz=%d charged=%s",
+							ue.getRelPath(), ue.getSid(), ue.getCommitId(), ue.getBlobFsId(), ue.size(),
+							Boolean.toString(ue.isCharged())));
+				}
+				break;
+			}
+
+			case "usagereport": {
+				initSolder("SolderRestCLIUsageReport", null, null);
+				String repoId = args[nParam++];
+				File outDir = new File(args[nParam++]);
+				outDir = outDir.getCanonicalFile();
+				Validator.checkDir(outDir, true, "Usage outDir");
+
+				logConsole(String.format("Repo %s Usage; outDir=%s", repoId, outDir.getAbsolutePath()));
+				SUsageEntry[] a = SolderRestClient.getAllUsage(repoId, false, client);
+				long szCharged = 0L;
+				long szOrphan = 0L;
+				File fileOut = new File(outDir, repoId + "_usage.csv");
+				Validator.checkNewFile(fileOut, true, "Usage out file");
+				try (FileWriter w = new FileWriter(fileOut, StandardCharsets.UTF_8)) {
+					w.write("sid,commitId,type,path,blobFsId,blobFound,sz,charged\r\n");
+					for (SUsageEntry ue : a) {
+						long sz = Math.max(0L, ue.size());
+						if (ue.isCharged()) {
+							szCharged += sz;
+							if (ue.getType() == SUsageEntry.SueType.ORPHAN) {
+								szOrphan += sz;
+							}
+						}
+						w.write(String.format("%d,%d,%s,%s,%d,%s,%d,%s\r\n", ue.getSid(), ue.getCommitId(),
+								ue.getType().name(), ue.getRelPath(), ue.getBlobFsId(),
+								Boolean.toString(ue.isBlobFSFound()), ue.size(), Boolean.toString(ue.isCharged())));
+						logConsole(String.format("\t%s type=%s blobFsId=%d sz=%d charged=%s", ue.getRelPath(),
+								ue.getType().name(), ue.getBlobFsId(), ue.size(), Boolean.toString(ue.isCharged())));
+					}
+				}
+				logConsole(String.format("Repo %s uses %,d bytes and has orphan %,d bytes. Wrote %s", repoId, szCharged,
+						szOrphan, fileOut.getAbsolutePath()));
+				break;
+			}
+
+			case "purge": {
+				initSolder("SolderRestCLIPurge", null, null);
+				String repoId = args[nParam++];
+				boolean fDryRun = nParam < args.length ? TypeConversion.asBoolean(args[nParam++]) : true;
+				logConsole(String.format("Purge repo %s fDryRun=%s", repoId, Boolean.toString(fDryRun)));
+				SolderRestClient.purge(repoId, fDryRun, client);
+				logConsole(String.format("Purge %s for repo %s", fDryRun ? "dry-run completed" : "completed", repoId));
 				break;
 			}
 			

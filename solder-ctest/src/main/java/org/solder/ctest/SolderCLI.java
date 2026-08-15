@@ -14,9 +14,11 @@ import org.apache.commons.logging.LogFactory;
 import org.solder.core.SRepo;
 import org.solder.core.SRepoUtil;
 import org.solder.core.SRepoUtil.SRepoUsage;
+import org.solder.core.SRepoUtil.UsageEntry;
 import org.solder.core.ServerRepoFileService;
 import org.solder.core.SolderException;
 import org.solder.core.SolderMain;
+import org.solder.rest.solder.SUsageEntry;
 import org.solder.rest.solder.SolderGitClient;
 
 import com.aura.crypto.CryptoScheme;
@@ -283,10 +285,12 @@ public class SolderCLI  extends AbstractCLI {
 				String repoId = args[nParam++];
 				int[] aCommitIdsToKeep= TParseUtil.parseIntCsv(args[nParam++]);
 				boolean fDryRun = nParam<args.length?TypeConversion.asBoolean(args[nParam++]):true;
-				logConsole(String.format("Prune repo %s toKeep=%s",repoId,Arrays.toString(aCommitIdsToKeep)));
+				logConsole(String.format("Prune repo %s toKeep=%s fDryRun=%s",repoId,Arrays.toString(aCommitIdsToKeep),Boolean.toString(fDryRun)));
 				SRepo repo = SRepo.getRepoById(repoId);
 				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
-				repo.pruneCommits(aCommitIdsToKeep, fDryRun);
+				int[] aRemoved = repo.pruneCommits(aCommitIdsToKeep, fDryRun);
+				logConsole(String.format("Prune %s removed %d commits: %s",
+						fDryRun ? "dry-run would remove" : "removed", aRemoved.length, Arrays.toString(aRemoved)));
 				break;
 			}
 				
@@ -294,11 +298,18 @@ public class SolderCLI  extends AbstractCLI {
 				initSolder("SolderCLIOrphan",null,null);
 				String repoId = args[nParam++];
 				boolean fDryRun = nParam<args.length?TypeConversion.asBoolean(args[nParam++]):true;
-				logConsole(String.format("Remove Orphan from  repo %s [fDryRun=%s]",repoId,Boolean.toString(fDryRun)));
+				logConsole(String.format("Remove Orphan from repo %s [fDryRun=%s]",repoId,Boolean.toString(fDryRun)));
 				SRepo repo = SRepo.getRepoById(repoId);
 				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
 				SRepoUsage sru = new SRepoUsage(repo);
-				sru.doRemoveOrphan(fDryRun);
+				List<UsageEntry> list = sru.doRemoveOrphan(fDryRun);
+				logConsole(String.format("Orphan %s %d blobs:", fDryRun ? "would delete" : "deleted", list.size()));
+				for (UsageEntry ue : list) {
+					SUsageEntry sue = SRepoUtil.makeSUsageEntry(ue);
+					logConsole(String.format("\t%s sid=%d commitId=%d blobFsId=%d sz=%d charged=%s",
+							sue.getRelPath(), sue.getSid(), sue.getCommitId(), sue.getBlobFsId(), sue.size(),
+							Boolean.toString(sue.isCharged())));
+				}
 				break;
 			}
 			
@@ -313,8 +324,26 @@ public class SolderCLI  extends AbstractCLI {
 				logConsole(String.format("Repo %s Usage; outDir=%s",repoId,outDir.getAbsolutePath()));
 				SRepo repo = SRepo.getRepoById(repoId);
 				logConsole(String.format("Found repo %s (sid=%d)",repo.getId(),repo.getSeqId()));
-				long[] a = SRepoUtil.getAllRepoUsage(List.of(repo), outDir);
-				logConsole(String.format("Repo %s(%d) uses %,d bytes and has orphan %,d bytes.",repo.getId(),repo.getSeqId(), a[0],a[1]));
+				SRepoUsage sru = new SRepoUsage(repo);
+				List<UsageEntry> list = sru.getAllEntry();
+				long szCharged = 0L;
+				long szOrphan = 0L;
+				for (UsageEntry ue : list) {
+					SUsageEntry sue = SRepoUtil.makeSUsageEntry(ue);
+					long sz = Math.max(0L, sue.size());
+					if (sue.isCharged()) {
+						szCharged += sz;
+						if (sue.getType() == SUsageEntry.SueType.ORPHAN) {
+							szOrphan += sz;
+						}
+					}
+					logConsole(String.format("\t%s type=%s blobFsId=%d sz=%d charged=%s", sue.getRelPath(),
+							sue.getType().name(), sue.getBlobFsId(), sue.size(), Boolean.toString(sue.isCharged())));
+				}
+				sru.getUsageCsv(outDir);
+				File fileOut = new File(outDir, repo.getSeqId() + "_usage.csv");
+				logConsole(String.format("Repo %s(%d) uses %,d bytes and has orphan %,d bytes. Wrote %s",
+						repo.getId(), repo.getSeqId(), szCharged, szOrphan, fileOut.getAbsolutePath()));
 				break;
 			}
 			
@@ -325,12 +354,14 @@ public class SolderCLI  extends AbstractCLI {
 				
 				SRepo repo = SRepo.getRepoById(repoId);
 				
+				logConsole(String.format("Purge repo %s fDryRun=%s", repoId, Boolean.toString(fDryRun)));
 				logConsole(String.format("Found repo %s (sid=%d) fDeleted=%s, fDryRun=%s",repo.getId(),repo.getSeqId(),Boolean.toString(repo.isDeleted()),Boolean.toString(fDryRun)));
 				if (!repo.isDeleted()) {
 					throw new RestException("Repo cannot be purged. Need to be marked for deletion!");
 				}
 				SRepoUsage sru = new SRepoUsage(repo);
 				sru.purgeRepo(fDryRun);
+				logConsole(String.format("Purge %s for repo %s", fDryRun ? "dry-run completed" : "completed", repoId));
 				
 				break;
 			}

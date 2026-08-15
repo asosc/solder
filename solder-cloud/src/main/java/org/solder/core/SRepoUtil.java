@@ -24,6 +24,8 @@ import org.nimbo.blobs.BlobFile;
 import org.nimbo.blobs.Container;
 import org.nimbo.blobs.NimboException;
 import org.solder.rest.solder.CommitDetails;
+import org.solder.rest.solder.SUsageEntry;
+import org.solder.rest.solder.SUsageEntry.SueType;
 import org.solder.rest.solder.SolderEntry;
 import org.solder.rest.solder.SolderEntry.EntryType;
 
@@ -44,8 +46,18 @@ public class SRepoUtil {
 	static enum UEType {
 		COMMIT, DATA, ORPHAN;
 	}
+	
+	public static SUsageEntry makeSUsageEntry(UsageEntry ue) {
+		if (ue==null) {
+			return null;
+		}
+		
+		return new SUsageEntry(ue.sid, ue.commitId, SueType.valueOf(ue.type.name()), ue.makeRelPath(), ue.blobFSId, ue.blobFS!=null,
+				ue.szResolved, ue.fCharged);
 
-	static class UsageEntry {
+	}
+
+	public static class UsageEntry {
 		int sid, commitId;
 		long blobFSId;
 		BlobFS blobFS;
@@ -74,6 +86,28 @@ public class SRepoUtil {
 			}
 
 		}
+		
+		String makeRelPath() {
+			if (type == UEType.COMMIT) {
+				return "CommitFile";
+			}
+			if (type == UEType.DATA) {
+				return se != null ? se.getRelPath() : "Unknown";
+			}
+			// ORPHAN — label by blob owner for readability only.
+			if (blobFS != null && SRepo.BLOB_TYPE_SOLDER_COMMIT.equals(blobFS.getOwnerApp())) {
+				return "OrphanCommit:CommitFile";
+			}
+			String path = null;
+			if (blobFS != null && blobFS.getInfo() != null) {
+				path = blobFS.getInfo().get("path");
+			}
+			if (StringUtils.isEmpty(path)) {
+				path = "Unknown";
+			}
+			return "OrphanFile:" + path;
+		}
+
 
 	}
 
@@ -258,7 +292,7 @@ public class SRepoUtil {
 			return szRepoOrphan;
 		}
 		
-		public void doRemoveOrphan(boolean fDryRun) throws IOException {
+		public List<UsageEntry> doRemoveOrphan(boolean fDryRun) throws IOException {
 			// Live content is defined by tip (and typically tip's prev snap). If either failed to
 			// scan, orphan classification is untrustworthy — block reclaim. Otherwise reclaim
 			// all orphans (otherwise they stay orphan forever).
@@ -270,7 +304,7 @@ public class SRepoUtil {
 				LOG.info(msg);
 				throw new SolderException(msg);
 			}
-			deleteChargedBlobs(fDryRun, true);
+			return deleteChargedBlobs(fDryRun, true);
 		}
 
 		private int tipPrevCommitId() {
@@ -314,7 +348,8 @@ public class SRepoUtil {
 		/**
 		 * @param fOrphansOnly if true, only ORPHAN* entries; if false, all charged blobs (purge).
 		 */
-		private void deleteChargedBlobs(boolean fDryRun, boolean fOrphansOnly) throws IOException {
+		private  List<UsageEntry> deleteChargedBlobs(boolean fDryRun, boolean fOrphansOnly) throws IOException {
+			List<UsageEntry> listRet = new ArrayList<>();
 			int nConsecError = 0;
 			for (UsageEntry ue : listUE) {
 				if (fOrphansOnly && ue.type != UEType.ORPHAN) {
@@ -323,10 +358,11 @@ public class SRepoUtil {
 				if (!ue.fCharged || ue.blobFS == null) {
 					continue;
 				}
-				String relPath = relPathForCsv(ue);
+				String relPath = ue.makeRelPath();
 				long sz = Math.max(ue.szResolved, 0);
 				LOG.info(String.format("Found blob to delete type=%s path=%s blob=%d sz=%d fDryRun=%s",
 						ue.type.name(), relPath, ue.blobFSId, sz, Boolean.toString(fDryRun)));
+				listRet.add(ue);
 				if (fDryRun) {
 					continue;
 				}
@@ -342,6 +378,7 @@ public class SRepoUtil {
 							ue.blobFSId, ue.type.name()), e);
 				}
 			}
+			return listRet;
 		}
 		
 
@@ -383,7 +420,7 @@ public class SRepoUtil {
 					csvPrinter.printComment(sb.toString());
 				}
 
-				String relPath = relPathForCsv(ue);
+				String relPath = ue.makeRelPath();
 				long sz = Math.max(ue.szResolved, 0);
 				long szCharged = ue.fCharged ? sz : 0L;
 				if (ue.type == UEType.COMMIT || ue.type == UEType.DATA) {
@@ -418,27 +455,7 @@ public class SRepoUtil {
 			}
 		}
 
-		private static String relPathForCsv(UsageEntry ue) {
-			if (ue.type == UEType.COMMIT) {
-				return "CommitFile";
-			}
-			if (ue.type == UEType.DATA) {
-				return ue.se != null ? ue.se.getRelPath() : "Unknown";
-			}
-			// ORPHAN — label by blob owner for readability only.
-			if (ue.blobFS != null && SRepo.BLOB_TYPE_SOLDER_COMMIT.equals(ue.blobFS.getOwnerApp())) {
-				return "OrphanCommit:CommitFile";
-			}
-			String path = null;
-			if (ue.blobFS != null && ue.blobFS.getInfo() != null) {
-				path = ue.blobFS.getInfo().get("path");
-			}
-			if (StringUtils.isEmpty(path)) {
-				path = "Unknown";
-			}
-			return "OrphanFile:" + path;
-		}
-
+		
 		private static long resolveBlobSize(BlobFS blobFS) {
 			long sz = blobFS.getSize();
 			if (sz > 0) {

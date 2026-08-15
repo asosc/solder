@@ -91,23 +91,6 @@ public class SolderRestClient {
 	}
 	
 	
-	public static SRepoInfo deleteRepo(String repoId,RestClient client) throws IOException {
-		Objects.requireNonNull(client, "client");
-		
-		
-		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
-		
-		
-		TReference<SRepoInfo> ret = new TReference<>();
-		client.doRestCall(SolderRestOp.DELETE, (encoder) -> {
-			// You dont have to send this if it is false.
-			encoder.writeString("id", repoIdFinal);
-		}, (decoder) -> {
-			ret.set(decoder.readObject("ret", SRepoInfo.class));
-		});
-		return ret.get();
-	}
-	
 	public static SCommitInfo  getLatestCommit(String repoId, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
@@ -241,5 +224,115 @@ public class SolderRestClient {
 		return Objects.requireNonNull(ref.get());
 	}
 	
+	
+	public static SRepoInfo deleteRepo(String repoId,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+		
+		
+		TReference<SRepoInfo> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.DELETE, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+		}, (decoder) -> {
+			ret.set(decoder.readObject("ret", SRepoInfo.class));
+		});
+		return ret.get();
+	}
+	
+	public static SCommitInfo[] listCommits(String repoId,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+		
+		
+		TReference<SCommitInfo[]> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.LIST_COMMITS, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+		}, (decoder) -> {
+			ret.set(decoder.readObjectArray("ret", SCommitInfo.class));
+		});
+		return ret.get();
+	}
+	
+	//Returns deleted commit ids (or the ones it wll remove if it is a dry run)
+	public static int[] pruneCommits(String repoId,int[] aCommitIdsToKeep,boolean fDryRun,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+
+		
+		
+		TReference<int[]> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.PRUNE_COMMITS, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+			encoder.writeIntArray("commit_id", aCommitIdsToKeep);
+			encoder.writeBoolean("fDryRun", fDryRun);
+		}, (decoder) -> {
+			ret.set(decoder.readIntArray("ret"));
+		});
+		return ret.get();
+	}
+	
+
+	
+	public static SUsageEntry[] removeOrphans(String repoId,boolean fDryRun,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+
+		
+		
+		TReference<SUsageEntry[]> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.ORPHAN, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+			encoder.writeBoolean("fDryRun", fDryRun);
+		}, (decoder) -> {
+			ret.set(decoder.readObjectArray("ret",SUsageEntry.class));
+		});
+		return ret.get();
+	}
+	
+	public static SUsageEntry[] getAllUsage(String repoId,boolean fDryRun,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+
+		
+		
+		TReference<SUsageEntry[]> ret = new TReference<>();
+		client.doRestCall(SolderRestOp.USAGE_REPORT, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+			encoder.writeBoolean("fDryRun", fDryRun);
+		}, (decoder) -> {
+			ret.set(decoder.readObjectArray("ret",SUsageEntry.class));
+		});
+		return ret.get();
+	}
+	
+	//Repo Management stuff.. 
+	
+	public static void purge(String repoId,boolean fDryRun,RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		
+		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
+		client.doRestCall(SolderRestOp.PURGE, (encoder) -> {
+			// You dont have to send this if it is false.
+			encoder.writeString("id", repoIdFinal);
+			encoder.writeBoolean("fDryRun", fDryRun);
+		}, (_) -> {
+			
+		});
+	}
 	
 }

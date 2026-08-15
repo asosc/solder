@@ -25,6 +25,9 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.solder.core.SCommit;
 import org.solder.core.SRepo;
+import org.solder.core.SRepoUtil;
+import org.solder.core.SRepoUtil.SRepoUsage;
+import org.solder.core.SRepoUtil.UsageEntry;
 import org.solder.core.ServerRepoFileService;
 import org.solder.core.SolderException;
 import org.solder.core.SolderSentryProvider;
@@ -34,6 +37,7 @@ import org.solder.rest.solder.CommitSession;
 import org.solder.rest.solder.IRepoFileService;
 import org.solder.rest.solder.SCommitInfo;
 import org.solder.rest.solder.SRepoInfo;
+import org.solder.rest.solder.SUsageEntry;
 import org.solder.rest.solder.SolderEntry;
 
 import com.ee.ens.AbstractHttpServlet.SCall;
@@ -69,14 +73,23 @@ public enum SolderRestSkeleton {
 	GET(SolderRestOp.GET,SolderRestSkeleton::doGet),	
 	SEARCH(SolderRestOp.SEARCH,SolderRestSkeleton::doSearch),
 	UPDATE(SolderRestOp.UPDATE,SolderRestSkeleton::doUpdate),
-	DELETE(SolderRestOp.DELETE,SolderRestSkeleton::doDelete),
 	GET_LATEST_COMMIT(SolderRestOp.GET_LATEST_COMMIT,SolderRestSkeleton::doGetLatestCommit),
 	GET_COMMIT(SolderRestOp.GET_COMMIT,SolderRestSkeleton::doGetCommit),
 	DOWNLOAD_FILE(SolderRestOp.DOWNLOAD_FILE,SolderRestSkeleton::doDownloadFile),
 	
 	BEGIN_COMMIT(SolderRestOp.BEGIN_COMMIT,SolderRestSkeleton::doBeginCommit),
 	UPLOAD_FILE(SolderRestOp.UPLOAD_FILE,SolderRestSkeleton::doUploadFile),
-	UPLOAD_COMMIT(SolderRestOp.UPLOAD_COMMIT,SolderRestSkeleton::doUploadCommit);
+	UPLOAD_COMMIT(SolderRestOp.UPLOAD_COMMIT,SolderRestSkeleton::doUploadCommit),
+	
+	DELETE(SolderRestOp.DELETE,SolderRestSkeleton::doDelete),
+	LIST_COMMITS(SolderRestOp.LIST_COMMITS,SolderRestSkeleton::doListCommits),
+	PRUNE_COMMITS(SolderRestOp.PRUNE_COMMITS,SolderRestSkeleton::doPruneCommits),
+	ORPHAN(SolderRestOp.ORPHAN,SolderRestSkeleton::doOrphan),
+	USAGE_REPORT(SolderRestOp.USAGE_REPORT,SolderRestSkeleton::doUsageReport),
+	PURGE(SolderRestOp.PURGE,SolderRestSkeleton::doPurge)
+	
+	
+	;
 
 	private static Log LOG = LogFactory.getLog(SolderRestSkeleton.class.getName());
 	
@@ -337,48 +350,6 @@ public enum SolderRestSkeleton {
 		});
 	}
 	
-	static void doDelete(RestSkeletonState state) throws IOException {
-		SCall scall = (SCall)state.getCallObject();
-		
-		TReference<SRepoInfo> refRepo = new TReference<>();
-		// We take string param val and optional param count
-		// and return the same val as an array of count values.
-		state.readParam((decoder) -> {
-			// int count = decoder.readInt("count");
-			scall.handleSession(decoder,null,false);
-			User user = (User)SessionManager.getUser();
-			
-			Set<String> params =decoder.getAllObjectFields();
-			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
-			String repoId = null;
-			if (repoSid<=0) {
-				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
-			}
-			SRepo repo = getRepo(repoSid,repoId,false);
-			
-			LOG.info(String.format("SolderRest Op: doDelete; sid=%d repoId=%s", repoSid,""+repoId));
-			
-			if (repo!=null) {
-				repo.refresh(null);
-				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
-				repo.updateDelete();
-			} else 	{
-				List<SRepo> list = SRepo.getDeletedRepo(user.getTenantId(),repoId);
-				if (list!=null && list.size()>0) {
-					repo = list.get(0);
-				} else {
-					throw new RestException("Unable to find repo  "+repoId);
-				}
-			}
-			
-			refRepo.set(SRepo.makeSRepoInfo(repo));
-		});
-
-		// Return
-		state.setSuccess((encoder) -> {
-			encoder.writeObject("ret", refRepo.get(),false);
-		});
-	}
 	
 	
 	
@@ -735,7 +706,234 @@ public enum SolderRestSkeleton {
 		}
 	}
 	
+
 	
+	static void doDelete(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SRepoInfo> refRepo = new TReference<>();
+		// We take string param val and optional param count
+		// and return the same val as an array of count values.
+		state.readParam((decoder) -> {
+			// int count = decoder.readInt("count");
+			scall.handleSession(decoder,null,false);
+			User user = (User)SessionManager.getUser();
+			
+			Set<String> params =decoder.getAllObjectFields();
+			int repoSid = params.contains("sid")?decoder.readInt("sid"):-1;
+			String repoId = null;
+			if (repoSid<=0) {
+				repoId = Validator.require(decoder.readString("id"),"repo id", Rules.NO_NULL_EMPTY,Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid,repoId,false);
+			
+			LOG.info(String.format("SolderRest Op: doDelete; sid=%d repoId=%s", repoSid,""+repoId));
+			
+			if (repo!=null) {
+				repo.refresh(null);
+				doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN,repo,-1);
+				repo.updateDelete();
+			} else 	{
+				List<SRepo> list = SRepo.getDeletedRepo(user.getTenantId(),repoId);
+				if (list!=null && list.size()>0) {
+					repo = list.get(0);
+				} else {
+					throw new RestException("Unable to find repo  "+repoId);
+				}
+			}
+			
+			refRepo.set(SRepo.makeSRepoInfo(repo));
+		});
+
+		// Return
+		state.setSuccess((encoder) -> {
+			encoder.writeObject("ret", refRepo.get(),false);
+		});
+	}
+	
+	
+	// Repo admin ops — contracts match SolderRestClient.
+	
+	static void doListCommits(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SCommitInfo[]> ref = new TReference<>();
+		state.readParam((decoder) -> {
+			scall.handleSession(decoder,null,false);
+			
+			Set<String> params = decoder.getAllObjectFields();
+			int repoSid = params.contains("sid") ? decoder.readInt("sid") : -1;
+			String repoId = null;
+			if (repoSid <= 0) {
+				repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			}
+			SRepo repo = getRepo(repoSid, repoId, true);
+			repo.refresh(null);
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN, repo, -1);
+			
+			LOG.info(String.format("SolderRest Op: doListCommits; sid=%d repoId=%s", repo.getSeqId(), repo.getId()));
+			
+			List<SCommit> list = repo.getAllCommit();
+			SCommitInfo[] a = new SCommitInfo[list.size()];
+			for (int i = 0; i < list.size(); i++) {
+				a[i] = SCommit.makeSCommitInfo(list.get(i));
+			}
+			ref.set(a);
+		});
+
+		state.setSuccess((encoder) -> {
+			encoder.writeObjectArray("ret", ref.get(), false);
+		});
+	}
+	
+	static void doPruneCommits(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<int[]> ref = new TReference<>();
+		state.readParam((decoder) -> {
+			scall.handleSession(decoder,null,false);
+			
+			Set<String> params = decoder.getAllObjectFields();
+			int repoSid = params.contains("sid") ? decoder.readInt("sid") : -1;
+			String repoId = null;
+			if (repoSid <= 0) {
+				repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			}
+			int[] aCommitIdsToKeep = params.contains("commit_id") ? decoder.readIntArray("commit_id") : new int[0];
+			boolean fDryRun = params.contains("fDryRun") && decoder.readBoolean("fDryRun");
+			
+			SRepo repo = getRepo(repoSid, repoId, true);
+			repo.refresh(null);
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN, repo, -1);
+			
+			LOG.info(String.format("SolderRest Op: doPruneCommits; sid=%d repoId=%s fDryRun=%s keep=%s",
+					repo.getSeqId(), repo.getId(), Boolean.toString(fDryRun), Arrays.toString(aCommitIdsToKeep)));
+			
+			ref.set(repo.pruneCommits(aCommitIdsToKeep, fDryRun));
+		});
+
+		state.setSuccess((encoder) -> {
+			encoder.writeIntArray("ret", ref.get());
+		});
+	}
+	
+	static void doOrphan(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SUsageEntry[]> ref = new TReference<>();
+		state.readParam((decoder) -> {
+			scall.handleSession(decoder,null,false);
+			
+			Set<String> params = decoder.getAllObjectFields();
+			int repoSid = params.contains("sid") ? decoder.readInt("sid") : -1;
+			String repoId = null;
+			if (repoSid <= 0) {
+				repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			}
+			boolean fDryRun = params.contains("fDryRun") && decoder.readBoolean("fDryRun");
+			
+			SRepo repo = getRepo(repoSid, repoId, true);
+			repo.refresh(null);
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN, repo, -1);
+			
+			LOG.info(String.format("SolderRest Op: doOrphan; sid=%d repoId=%s fDryRun=%s",
+					repo.getSeqId(), repo.getId(), Boolean.toString(fDryRun)));
+			
+			SRepoUsage usage = new SRepoUsage(repo);
+			List<UsageEntry> list = usage.doRemoveOrphan(fDryRun);
+			ref.set(toSUsageEntries(list));
+		});
+
+		state.setSuccess((encoder) -> {
+			encoder.writeObjectArray("ret", ref.get(), false);
+		});
+	}
+	
+	static void doUsageReport(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		TReference<SUsageEntry[]> ref = new TReference<>();
+		state.readParam((decoder) -> {
+			scall.handleSession(decoder,null,false);
+			
+			Set<String> params = decoder.getAllObjectFields();
+			int repoSid = params.contains("sid") ? decoder.readInt("sid") : -1;
+			String repoId = null;
+			if (repoSid <= 0) {
+				repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			}
+			// Client may send fDryRun; usage report is read-only and ignores it.
+			if (params.contains("fDryRun")) {
+				decoder.readBoolean("fDryRun");
+			}
+			
+			SRepo repo = getRepo(repoSid, repoId, true);
+			repo.refresh(null);
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN, repo, -1);
+			
+			LOG.info(String.format("SolderRest Op: doUsageReport; sid=%d repoId=%s", repo.getSeqId(), repo.getId()));
+			
+			SRepoUsage usage = new SRepoUsage(repo);
+			ref.set(toSUsageEntries(usage.getAllEntry()));
+		});
+
+		state.setSuccess((encoder) -> {
+			encoder.writeObjectArray("ret", ref.get(), false);
+		});
+	}
+	
+	static void doPurge(RestSkeletonState state) throws IOException {
+		SCall scall = (SCall)state.getCallObject();
+		
+		state.readParam((decoder) -> {
+			scall.handleSession(decoder,null,false);
+			User user = (User)SessionManager.getUser();
+			
+			Set<String> params = decoder.getAllObjectFields();
+			int repoSid = params.contains("sid") ? decoder.readInt("sid") : -1;
+			String repoId = null;
+			if (repoSid <= 0) {
+				repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
+			}
+			boolean fDryRun = params.contains("fDryRun") && decoder.readBoolean("fDryRun");
+			
+			SRepo repo = getRepo(repoSid, repoId, false);
+			if (repo == null) {
+				List<SRepo> list = SRepo.getDeletedRepo(user.getTenantId(), repoId);
+				if (list != null && !list.isEmpty()) {
+					repo = list.get(0);
+				}
+			}
+			final String repoIdFinal = repoId;
+			Objects.requireNonNull(repo, () -> "repo " + repoIdFinal);
+			repo.refresh(null);
+			doSentryCheck(SolderSentryProvider.SOLDEROP_SOLDER_ADMIN, repo, -1);
+			
+			LOG.info(String.format("SolderRest Op: doPurge; sid=%d repoId=%s fDeleted=%s fDryRun=%s",
+					repo.getSeqId(), repo.getId(), Boolean.toString(repo.isDeleted()), Boolean.toString(fDryRun)));
+			
+			if (!repo.isDeleted()) {
+				throw new RestException("Repo cannot be purged. Need to be marked for deletion!");
+			}
+			SRepoUsage usage = new SRepoUsage(repo);
+			usage.purgeRepo(fDryRun);
+		});
+
+		state.setSuccess((encoder) -> {
+			encoder.writeString("ret", "success");
+		});
+	}
+
+	static SUsageEntry[] toSUsageEntries(List<UsageEntry> list) {
+		if (list == null || list.isEmpty()) {
+			return new SUsageEntry[0];
+		}
+		SUsageEntry[] a = new SUsageEntry[list.size()];
+		for (int i = 0; i < list.size(); i++) {
+			a[i] = SRepoUtil.makeSUsageEntry(list.get(i));
+		}
+		return a;
+	}
 	
 	
 }

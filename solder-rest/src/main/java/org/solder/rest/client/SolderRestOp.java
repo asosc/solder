@@ -16,6 +16,11 @@ public enum SolderRestOp implements RestOp {
 	SEARCH("solsrch", SolderRestOp::autoboxSolder, false, false),
 	UPDATE("solupd", SolderRestOp::autoboxSolder, false, false),
 	DELETE("soldel", SolderRestOp::autoboxSolder, false, false),
+	LIST_COMMITS("sollistc", SolderRestOp::autoboxSolder, false, false),
+	PRUNE_COMMITS("solprunec", SolderRestOp::autoboxSolder, false, false),
+	ORPHAN("solorphan", SolderRestOp::autoboxSolder, false, false),
+	USAGE_REPORT("solusage", SolderRestOp::autoboxSolder, false, false),
+	PURGE("solpurge", SolderRestOp::autoboxSolder, false, false),
 	
 	
 	GET_LATEST_COMMIT("solglc", SolderRestOp::autoboxSolder, false, false),
@@ -27,6 +32,9 @@ public enum SolderRestOp implements RestOp {
 	BEGIN_COMMIT("solbc", SolderRestOp::autoboxSolder, false, false),
 	UPLOAD_FILE("soluf", null, true, false), 
 	UPLOAD_COMMIT("soluc", null, true, false);
+	
+	
+	//static final String[] git_Ops = { "create","checkout","push","init","status","search","delete","prune","orphan","usagereport","purge"};
 
 	// AutoBoxers...
 	public static IOConsumer<Encoder> autoboxSolder(IOFunction<String, String> fnValue) throws IOException {
