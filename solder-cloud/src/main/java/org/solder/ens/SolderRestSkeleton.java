@@ -873,10 +873,7 @@ public enum SolderRestSkeleton {
 			if (repoSid <= 0) {
 				repoId = Validator.require(decoder.readString("id"), "repo id", Rules.NO_NULL_EMPTY, Rules.TRIM_LOWER);
 			}
-			// Client may send fDryRun; usage report is read-only and ignores it.
-			if (params.contains("fDryRun")) {
-				decoder.readBoolean("fDryRun");
-			}
+			
 			
 			SRepo repo = getRepo(repoSid, repoId, true);
 			repo.refresh(null);

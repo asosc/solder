@@ -301,19 +301,16 @@ public class SolderRestClient {
 		return ret.get();
 	}
 	
-	public static SUsageEntry[] getAllUsage(String repoId,boolean fDryRun,RestClient client) throws IOException {
+	public static SUsageEntry[] getAllUsage(String repoId,RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
 		
 		
 		String repoIdFinal = Validator.require(repoId, "repo id", Rules.TRIM_LOWER,Rules.NO_NULL_EMPTY);
 
-		
-		
 		TReference<SUsageEntry[]> ret = new TReference<>();
 		client.doRestCall(SolderRestOp.USAGE_REPORT, (encoder) -> {
 			// You dont have to send this if it is false.
 			encoder.writeString("id", repoIdFinal);
-			encoder.writeBoolean("fDryRun", fDryRun);
 		}, (decoder) -> {
 			ret.set(decoder.readObjectArray("ret",SUsageEntry.class));
 		});
