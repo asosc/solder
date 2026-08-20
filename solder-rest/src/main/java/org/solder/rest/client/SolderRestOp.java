@@ -10,7 +10,7 @@ import com.lnk.serializer.Encoder;
 
 public enum SolderRestOp implements RestOp {
 	
-	
+	Version("solder_version", SolderRestOp::autoboxSolder, false, false),
 	CREATE("solcreate", SolderRestOp::autoboxSolder, false, false),
 	GET("solget", SolderRestOp::autoboxSolder, false, false),
 	SEARCH("solsrch", SolderRestOp::autoboxSolder, false, false),
@@ -80,7 +80,7 @@ public enum SolderRestOp implements RestOp {
 	}
 
 	public boolean requireSession() {
-		return true;
+		return this != Version;
 	}
 		
 		

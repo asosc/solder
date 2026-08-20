@@ -337,7 +337,7 @@ public class SolderRestCLI  extends AbstractCLI {
 				Validator.checkDir(outDir, true, "Usage outDir");
 
 				logConsole(String.format("Repo %s Usage; outDir=%s", repoId, outDir.getAbsolutePath()));
-				SUsageEntry[] a = SolderRestClient.getAllUsage(repoId, false, client);
+				SUsageEntry[] a = SolderRestClient.getAllUsage(repoId, client);
 				long szCharged = 0L;
 				long szOrphan = 0L;
 				File fileOut = new File(outDir, repoId + "_usage.csv");

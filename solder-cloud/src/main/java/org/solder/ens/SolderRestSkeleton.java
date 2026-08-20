@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.function.IOConsumer;
-import org.apache.commons.io.function.IOSupplier;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -28,26 +27,22 @@ import org.solder.core.SRepo;
 import org.solder.core.SRepoUtil;
 import org.solder.core.SRepoUtil.SRepoUsage;
 import org.solder.core.SRepoUtil.UsageEntry;
-import org.solder.core.ServerRepoFileService;
 import org.solder.core.SolderException;
 import org.solder.core.SolderSentryProvider;
-import org.solder.core.SolderVaultFactory;
+import org.solder.core.SolderVersion;
 import org.solder.rest.client.SolderRestOp;
 import org.solder.rest.solder.CommitSession;
-import org.solder.rest.solder.IRepoFileService;
 import org.solder.rest.solder.SCommitInfo;
 import org.solder.rest.solder.SRepoInfo;
 import org.solder.rest.solder.SUsageEntry;
 import org.solder.rest.solder.SolderEntry;
 
 import com.ee.ens.AbstractHttpServlet.SCall;
-import com.ee.ens.beeObj.EEBeeFs;
 import com.ee.ens.EnServlet;
 import com.ee.rest.RestException;
 import com.ee.rest.RestOp;
 import com.ee.rest.RestProcessor;
 import com.ee.rest.RestSkeletonState;
-import com.ee.rest.RestOp.RestClient;
 import com.ee.session.SessionManager;
 import com.ee.session.db.EEvent;
 import com.ee.session.db.EStateObj;
@@ -69,7 +64,7 @@ import com.lnk.lucene.TempFiles;
 public enum SolderRestSkeleton {
 	
 	
-
+	Version(SolderRestOp.Version,SolderRestSkeleton::doVersion),
 	CREATE(SolderRestOp.CREATE,SolderRestSkeleton::doCreate),
 	GET(SolderRestOp.GET,SolderRestSkeleton::doGet),	
 	SEARCH(SolderRestOp.SEARCH,SolderRestSkeleton::doSearch),
@@ -175,6 +170,21 @@ public enum SolderRestSkeleton {
 	
 	// Skeletons
 	//Now we also try id as sid (as it is convenient.
+	
+	static void doVersion(RestSkeletonState state) throws IOException {
+		
+		TReference<String> ref = new TReference<>();
+		state.readParam((_) -> {
+			ref.set(SolderVersion.VERSION);
+		});
+		// Return
+		state.setSuccess((encoder) -> {
+			// void
+			encoder.writeString("ret", ref.get());
+		});
+		
+	}
+	
 	static SRepo getRepo(int sid,String id,boolean fThrow) throws IOException {
 		SRepo repo =null;
 		if (sid <=0) {

@@ -26,8 +26,10 @@ public class RestRepoFileService implements IRepoFileService {
 
 	RestClient client;
 	
-	public RestRepoFileService(RestClient client) {
+	public RestRepoFileService(RestClient client) throws IOException{
 		this.client = Objects.requireNonNull(client,"client");
+		String stServerVersion = SolderRestClient.getVersion(client);
+		LOG.info(String.format("Solder RepoFileService server verion= [%s]", stServerVersion));
 	}
 	
 	public RestClient getRestClient() throws IOException {

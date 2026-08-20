@@ -23,6 +23,20 @@ public class SolderRestClient {
 	//Solder is not expected to keep all versions for ever 
 	//This is not a git, more for binary repositories and filesystem, logfiles, etc.
 	
+	public static String getVersion(RestClient client) throws IOException {
+		Objects.requireNonNull(client, "client");
+		TReference<String> ret = new TReference<>();
+		
+		client.doRestCall(SolderRestOp.Version, (_) -> {
+			
+		}, (decoder) -> {
+			String version = decoder.readString("ret");
+			ret.set(version);
+		});
+		return ret.get();
+	}
+
+	
 	
 	public static SRepoInfo createRepo(String repoId,String schemaName,int aoId,String tag, RestClient client) throws IOException {
 		Objects.requireNonNull(client, "client");
